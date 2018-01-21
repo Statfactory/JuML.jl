@@ -1,0 +1,5 @@
+const SLICELENGTH = 10000
+
+const MISSINGLEVEL = "."
+
+const HEADLENGTH = 20
