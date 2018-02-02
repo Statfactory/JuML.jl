@@ -18,9 +18,13 @@ struct DataFrame <: AbstractDataFrame
 end
 
 mutable struct CovariateStats
+    obscount::Int64
     nancount::Int64
+    nanpcnt::Float64
     sum::Float64
     sum2::Float64
+    mean::Float64
+    std::Float64
     min::Float64
     max::Float64
 end
@@ -33,6 +37,15 @@ getname(covariate::AbstractCovariate{T}) where {T<:AbstractFloat} = covariate.na
 
 getname(boolvar::AbstractBoolVariate) = boolvar.name
 
+function widenfactors(factors::Vector{<:AbstractFactor})
+    if all(map((factor -> issubtype(typeof(factor), AbstractFactor{UInt8})), factors))
+        factors
+    elseif all(map((factor -> issubtype(typeof(factor), AbstractFactor{UInt8}) || issubtype(typeof(factor), AbstractFactor{UInt16})), factors))
+        [issubtype(typeof(factor), AbstractFactor{UInt16}) ? factor : WiderFactor{UInt8, UInt16}(factor) for factor in factors]
+    else
+        [issubtype(typeof(factor), AbstractFactor{UInt32}) ? factor : (issubtype(typeof(factor), AbstractFactor{UInt16}) ? WiderFactor{UInt16, UInt32}(factor) : WiderFactor{UInt8, UInt32}(factor)) for factor in factors]
+    end
+end
 
 function DataFrame(path::String)
     path = abspath(path)
@@ -160,12 +173,11 @@ function Base.summary(boolvar::AbstractBoolVariate)
     print(String(take!(io)))
 end
 
-function Base.summary(covariate::AbstractCovariate{T}) where {T<:AbstractFloat}
-    io = IOBuffer()
+function getstats(covariate::AbstractCovariate{T}) where {T<:AbstractFloat}
     len = length(covariate)
-    init = CovariateStats(0, NaN64, NaN64, NaN64, NaN64)
+    init = CovariateStats(0, 0, NaN64, NaN64, NaN64, NaN64, NaN64, NaN64, NaN64)
     slices = slice(covariate, 1, len, SLICELENGTH)
-    stats = fold(init, slices) do s::CovariateStats, slice
+    stats = fold(init, slices) do s, slice
         for v in slice
             if isnan(v)
                 s.nancount += 1
@@ -189,13 +201,23 @@ function Base.summary(covariate::AbstractCovariate{T}) where {T<:AbstractFloat}
         end
         s
     end
-    println(io, @sprintf("%-15s%12d", "Obs Count", len))
+    stats.obscount = len
+    stats.nanpcnt = 100.0 * stats.nancount / len
+    stats.mean = stats.sum / (len - stats.nancount)
+    stats.std = sqrt(((stats.sum2 - stats.sum * stats.sum / (len - stats.nancount)) / (len - stats.nancount - 1)))
+    stats
+end
+
+function Base.summary(covariate::AbstractCovariate{T}) where {T<:AbstractFloat}
+    io = IOBuffer()
+    stats = getstats(covariate)
+    println(io, @sprintf("%-15s%12d", "Obs Count", stats.obscount))
     println(io, @sprintf("%-15s%12d", "NaN Freq", stats.nancount))
-    println(io, @sprintf("%-15s%12G", "NaN %", 100.0 * stats.nancount / len))
+    println(io, @sprintf("%-15s%12G", "NaN %", stats.nanpcnt))
     println(io, @sprintf("%-15s%12G", "Min", stats.min))
     println(io, @sprintf("%-15s%12G", "Max", stats.max))
-    println(io, @sprintf("%-15s%12G", "Mean", stats.sum / (len - stats.nancount)))
-    println(io, @sprintf("%-15s%12G", "Std", sqrt(((stats.sum2 - stats.sum * stats.sum / (len - stats.nancount)) / (len - stats.nancount - 1)))))
+    println(io, @sprintf("%-15s%12G", "Mean", stats.mean))
+    println(io, @sprintf("%-15s%12G", "Std", stats.std))
     print(String(take!(io)))
 end
 

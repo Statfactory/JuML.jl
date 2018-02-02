@@ -22,6 +22,10 @@ function Seq(::Type{T}, iter) where {T}
                        end))
 end
 
+function Seq(range::Range{T}) where {T}
+    Seq(T, range)
+end
+
 tryread(s::EmptySeq{T}) where {T} = Nullable{T}(), EmptySeq{T}()
 
 function tryread(xs::ConsSeq{T}) where {T} 
@@ -132,9 +136,9 @@ function zip2(xs::ConsSeq{T}, ys::ConsSeq{S}) where {T} where {S}
                 statey, nexty = ys.genfun()
                 (statex, statey), state -> 
                     begin
-                        statex, statey = state
-                        x, newstatex = nextx(statex) 
-                        y, newstatey = nexty(statey) 
+                        _statex, _statey = state
+                        x, newstatex = nextx(_statex) 
+                        y, newstatey = nexty(_statey) 
                         if isnull(x) || isnull(y)
                             Nullable{Tuple{T, S}}(), (newstatex, newstatey)
                         else
@@ -157,10 +161,10 @@ function zip3(xs::ConsSeq{T}, ys::ConsSeq{S}, zs::ConsSeq{U}) where {T} where {S
                 statez, nextz = zs.genfun()
                 (statex, statey, statez), state -> 
                     begin
-                        statex, statey, statez = state
-                        x, newstatex = nextx(statex) 
-                        y, newstatey = nexty(statey) 
-                        z, newstatez = nextz(statez) 
+                        _statex, _statey, _statez = state
+                        x, newstatex = nextx(_statex) 
+                        y, newstatey = nexty(_statey) 
+                        z, newstatez = nextz(_statez) 
                         if isnull(x) || isnull(y) || isnull(z)
                             Nullable{Tuple{T, S, U}}(), (newstatex, newstatey, newstatez)
                         else
@@ -171,146 +175,86 @@ function zip3(xs::ConsSeq{T}, ys::ConsSeq{S}, zs::ConsSeq{U}) where {T} where {S
             )
 end
 
+function zip4(xs::Seq{T}, ys::Seq{S}, zs::Seq{U}, vs::Seq{V}) where {T} where {S} where {U} where {V}
+    EmptySeq{Tuple{T, S, U, V}}()
+end
+
+function zip4(xs::ConsSeq{T}, ys::ConsSeq{S}, zs::ConsSeq{U}, vs::Seq{V}) where {T} where {S} where {U} where {V}
+    return ConsSeq{Tuple{T, S, U, V}}(() ->
+            begin
+                statex, nextx = xs.genfun()
+                statey, nexty = ys.genfun()
+                statez, nextz = zs.genfun()
+                statev, nextv = vs.genfun()
+                (statex, statey, statez, statev), state -> 
+                    begin
+                        _statex, _statey, _statez, _statev = state
+                        x, newstatex = nextx(_statex) 
+                        y, newstatey = nexty(_statey) 
+                        z, newstatez = nextz(_statez) 
+                        v, newstatev = nextv(_statev) 
+                        if isnull(x) || isnull(y) || isnull(z) || isnull(v)
+                            Nullable{Tuple{T, S, U, V}}(), (newstatex, newstatey, newstatez, newstatev)
+                        else
+                            Nullable{Tuple{T, S, U, V}}((get(x), get(y), get(z), get(v))), (newstatex, newstatey, newstatez, newstatev)
+                        end
+                    end
+            end
+            )
+end
 
 
-# abstract type Seq{T} end
+function zipn(xs::Vector{<:Seq{T}}) where {T}
+    EmptySeq{Vector{T}}()
+end
 
-# struct EmptySeq{T} <: Seq{T} end
+function zipn(xs::Vector{ConsSeq{T}}) where {T}
+    return ConsSeq{Vector{T}}(() ->
+        begin
+            y = [x.genfun() for x in xs]
+            state = [s for (s, _) in y]
+            next = [f for (_, f) in y]
+            state, sarg ->
+                begin
+                    res = [b(a) for (a, b) in zip(sarg, next)]
+                    newstate = [x for (_, x) in res]
+                    if all([!isnull(a) for (a, b) in res])
+                        v = [get(x) for (x, _) in res]
+                        Nullable{Vector{T}}(v), newstate
+                    else
+                        Nullable{Vector{T}}(), newstate
+                    end
+                end
+        end
+    )
+end
 
-# struct ConsSeq{T} <: Seq{T}
-#     genfun::Function
-# end
+function Base.foreach(f::Function, xs::Seq{T}) where {T}
+    eof = false
+    tail = xs
+    while !eof
+        v, tail = tryread(tail)
+        if isnull(v)
+            eof = true
+        else
+            f(get(v))
+        end
+    end   
+end
 
-# function Seq(::Type{T}, iter) where {T}
-#     state = start(iter)
-#     if done(iter, state)
-#         EmptySeq{T}()
-#     else
-#         v::T, newstate = next(iter, state)
-#         ConsSeq{T}( () -> (v, Seq(T, iter, newstate)))
-#     end
-# end
+function Base.collect(xs::Seq{T}) where {T}
+    res = Vector{T}()
+    eof = false
+    tail = xs
+    while !eof
+        v, tail = tryread(tail)
+        if isnull(v)
+            eof = true
+        else
+            push!(res, get(v))
+        end
+    end  
+    res
+end
 
-# function Seq(::Type{T}, iter, state) where {T}
-#     if done(iter, state)
-#         EmptySeq{T}()
-#       else
-#         v::T, newstate = next(iter, state)
-#         ConsSeq{T}( () -> (v, Seq(T, iter, newstate)))
-#       end
-# end
 
-# function Seq(::Type{T}, genfun::Function) where {T}
-#     v::Nullable{T} = genfun()
-#     if isnull(v)
-#         EmptySeq{T}()
-#     else
-#         a::T = get(v)
-#         ConsSeq{T}(() -> (a, Seq(T, genfun)))
-#     end
-# end
-
-# tryread(s::EmptySeq{T}) where {T} = Nullable{T}(), EmptySeq{T}()
-
-# function tryread(xs::ConsSeq{T}) where {T} 
-#     v::T, tail = xs.genfun()
-#     Nullable{T}(v), tail
-# end
-
-# Base.isempty(xs::EmptySeq{T}) where {T} = true
-
-# Base.isempty(xs::ConsSeq{T}) where {T} = false
-
-# fold(f::Function, init, xs::EmptySeq{T}) where {T} = init
-
-# function fold(f::Function, init, xs::ConsSeq{T}) where {T}
-#     eof = false
-#     acc = init
-#     tail = xs
-#     while !eof
-#         v, tail = tail.genfun()
-#         acc = f(acc, v)
-#         eof = isempty(tail)
-#     end
-#     acc
-# end
-
-# Iterators.take(xs::EmptySeq{T}, n::Integer) where {T} = EmptySeq{T}()
-
-# function Iterators.take(xs::ConsSeq{T}, n::Integer) where {T}
-#     if n > 1
-#         ConsSeq{T}(() ->
-#             begin
-#                 a, tail = xs.genfun()
-#                 (a, Iterators.take(tail, n - 1))
-#             end)
-#     else
-#         ConsSeq{T}(() ->
-#             begin
-#                 a, tail = xs.genfun()
-#                 (a, EmptySeq{T}())
-#             end)
-#     end
-# end
-
-# Base.map(f::Function, xs::EmptySeq{T}, ::Type{S}) where {T, S} = EmptySeq{S}()
-
-# function Base.map(f::Function, xs::ConsSeq{T}, ::Type{S}) where {T, S} 
-#     ConsSeq{S}(() ->
-#                 begin
-#                     a, tail = xs.genfun()
-#                     v = f(a)
-#                     return (v, map(f, tail, S))
-#                 end
-#               )
-# end
-
-# function chunkbysize(xs::EmptySeq{T}, n::Integer) where {T} 
-#     EmptySeq{Vector{T}}()
-# end
-
-# function chunkbysize(xs::ConsSeq{T}, n::Integer) where {T} 
-#     return ConsSeq{Vector{T}}(() ->
-#         begin
-#             chunk = Vector{T}()
-#             k = n
-#             tail = xs
-#             while k >= 1
-#                 a, tail = tryread(tail)
-#                 if !isnull(a)
-#                     push!(chunk, get(a))
-#                     k -= 1
-#                 else
-#                     k = 0
-#                 end
-#             end
-#             (chunk, chunkbysize(tail, n))
-#         end)
-# end
-
-# function zip2(xs::Seq{T}, ys::Seq{S}) where {T} where {S}
-#     EmptySeq{Tuple{T, S}}()
-# end
-
-# function zip2(xs::ConsSeq{T}, ys::ConsSeq{S}) where {T} where {S}
-#     ConsSeq{Tuple{T, S}}(() ->
-#         begin
-#             x, tailx = xs.genfun()
-#             y, taily = ys.genfun()
-#             ((x, y), zip2(tailx, taily))
-#         end)
-# end
-
-# function zip3(xs::Seq{T}, ys::Seq{S}, zs::Seq{U}) where {T} where {S} where {U}
-#     EmptySeq{Tuple{T, S, U}}()
-# end
-
-# function zip3(xs::ConsSeq{T}, ys::ConsSeq{S}, zs::ConsSeq{U}) where {T} where {S} where {U}
-#     ConsSeq{Tuple{T, S, U}}(() ->
-#         begin
-#             x, tailx = xs.genfun()
-#             y, taily = ys.genfun()
-#             z, tailz = zs.genfun()
-#             ((x, y, z), zip3(tailx, taily, tailz))
-#         end)
-# end

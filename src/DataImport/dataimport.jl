@@ -161,7 +161,7 @@ function importlevels(colimporter::CatImporter, levels::Vector{String})
         if colimporter.isdropped
             rm(colimporter.filepath)
         end
-        if !colimporter.isdropped && colimporter.isnumeric(levelfreq)
+        if !colimporter.isdropped && colimporter.isnumeric(colimporter.colname, levelfreq)
             newpath = joinpath(dirname(colimporter.filepath), "$(randstring(10)).dat")
             if length(colimporter.levelmap) > typemax(UInt8) + 1
                 uint16tonumcolumn(levelindexmap, colimporter.filepath, newpath, colimporter.length)
@@ -217,7 +217,7 @@ function importcsv(path::String, maxobs::Integer, chunksize::Integer, isnumeric:
 end
 
 function importcsv(path::String, maxobs::Integer, chunksize::Integer)
-    isnumeric = (levelfreq::Dict{String, Int64} -> 
+    isnumeric = (colname::String, levelfreq::Dict{String, Int64}) -> 
                  begin
                      res = false
                      for k in keys(levelfreq)
@@ -227,6 +227,6 @@ function importcsv(path::String, maxobs::Integer, chunksize::Integer)
                          end
                      end
                     res
-                 end)
+                 end
     importcsv(path, maxobs, chunksize, isnumeric)
 end

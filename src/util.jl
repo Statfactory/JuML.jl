@@ -1,20 +1,3 @@
-# function getslicer(fromobs::Integer, toobs::Integer, slicelength::Integer)
-#     a = convert(Int64, fromobs)
-#     slicelength = convert(Int64, slicelength)
-#     b = a + slicelength - 1
-#     c = b <= toobs ? b : toobs
-#     () -> begin
-#         if a <= c
-#             res = Nullable{Tuple{Int64, Int64}}((a, c))
-#             a = a + slicelength
-#             b = a + slicelength - 1
-#             c = b <= toobs ? b : toobs
-#             res
-#         else
-#             Nullable{Tuple{Int64, Int64}}()
-#         end
-#     end
-# end
 
 function nextslice(ind::Tuple{Int64, Int64, Int64})
     fromobs = ind[1]
@@ -44,17 +27,24 @@ function slice(data::AbstractVector{T}, fromobs::Integer, toobs::Integer, slicel
         fromobs = max(1, fromobs)
         toobs = min(toobs, length(data))
         slicelength = min(max(1, slicelength), toobs - fromobs + 1)
-        buffer = Vector{T}(slicelength)
+        # if usebuffer
+        #     buffer = Vector{T}(slicelength)
+        #     map(Seq(Tuple{Int64, Int64}, (fromobs, toobs, slicelength), nextslice), AbstractVector{T}) do rng
+        #         if rng[2] - rng[1] + 1 == slicelength
+        #             map!(T, buffer, view(data, rng[1]:rng[2]))
+        #             buffer
+        #         else
+        #             vw = view(buffer, 1:(rng[2] - rng[1] + 1))
+        #             map!(T, vw, view(data, rng[1]:rng[2]))
+        #             vw
+        #         end
+        #     end
+        # else
         map(Seq(Tuple{Int64, Int64}, (fromobs, toobs, slicelength), nextslice), AbstractVector{T}) do rng
-            if rng[2] - rng[1] + 1 == slicelength
-                map!(T, buffer, view(data, rng[1]:rng[2]))
-                buffer
-            else
-                vw = view(buffer, 1:(rng[2] - rng[1] + 1))
-                map!(T, vw, view(data, rng[1]:rng[2]))
-                vw
-            end
+                from, to = rng
+                view(data, from:to)
         end
+        #end
     end
 end
 
@@ -63,12 +53,12 @@ function mapslice(f::Function, slices::EmptySeq{AbstractVector{T}}, slicelength:
 end
 
 function mapslice(f::Function, slices::ConsSeq{AbstractVector{T}}, slicelength::Integer, ::Type{S}) where {T} where {S}
-    if T == S
-        map(slices, AbstractVector{S}) do slice
-            slice .= f.(slice)
-            return slice
-        end
-    else
+    # if T == S
+    #     map(slices, AbstractVector{S}) do slice
+    #         slice .= f.(slice)
+    #         return slice
+    #     end
+    # else
         buffer = Vector{S}(slicelength)
         map(slices, AbstractVector{S}) do slice
             if length(slice) == slicelength
@@ -80,7 +70,7 @@ function mapslice(f::Function, slices::ConsSeq{AbstractVector{T}}, slicelength::
                 return v
             end
         end       
-    end
+    #end
 end
 
 function mapslice2(f::Function, slices::EmptySeq{Tuple{AbstractVector{T}, AbstractVector{S}}}, slicelength::Integer, ::Type{U}) where {T} where {S} where {U}
@@ -88,21 +78,21 @@ function mapslice2(f::Function, slices::EmptySeq{Tuple{AbstractVector{T}, Abstra
 end
 
 function mapslice2(f::Function, slices::ConsSeq{Tuple{AbstractVector{T}, AbstractVector{S}}}, slicelength::Integer, ::Type{U}) where {T} where {S} where {U}
-    if T == U
-        map(slices, AbstractVector{U}) do slice
-            slice1 = slice[1]
-            slice2 = slice[2]
-            slice1 .= f.(slice1, slice2)
-            return slice1
-        end
-    elseif S == U
-        map(slices, AbstractVector{U}) do slice
-            slice1 = slice[1]
-            slice2 = slice[2]
-            slice2 .= f.(slice1, slice2)
-            return slice2
-        end
-    else
+    # if T == U
+    #     map(slices, AbstractVector{U}) do slice
+    #         slice1 = slice[1]
+    #         slice2 = slice[2]
+    #         slice1 .= f.(slice1, slice2)
+    #         return slice1
+    #     end
+    # elseif S == U
+    #     map(slices, AbstractVector{U}) do slice
+    #         slice1 = slice[1]
+    #         slice2 = slice[2]
+    #         slice2 .= f.(slice1, slice2)
+    #         return slice2
+    #     end
+    # else
         buffer = Vector{U}(slicelength)
         map(slices, AbstractVector{U}) do slice
             slice1 = slice[1]
@@ -116,7 +106,7 @@ function mapslice2(f::Function, slices::ConsSeq{Tuple{AbstractVector{T}, Abstrac
                 return v
             end
         end       
-    end
+    #end
 end
 
 function mapslice3(f::Function, slices::EmptySeq{Tuple{AbstractVector{T}, AbstractVector{S}, AbstractVector{U}}}, slicelength::Integer, ::Type{V}) where {T} where {S} where {U} where {V}
@@ -124,31 +114,31 @@ function mapslice3(f::Function, slices::EmptySeq{Tuple{AbstractVector{T}, Abstra
 end
 
 function mapslice3(f::Function, slices::ConsSeq{Tuple{AbstractVector{T}, AbstractVector{S}, AbstractVector{U}}}, slicelength::Integer, ::Type{V}) where {T} where {S} where {U} where {V}
-    if T == V
-        map(slices, AbstractVector{V}) do slice
-            slice1 = slice[1]
-            slice2 = slice[2]
-            slice3 = slice[3]
-            slice1 .= f.(slice1, slice2, slice3)
-            return slice1
-        end
-    elseif S == V
-        map(slices, AbstractVector{V}) do slice
-            slice1 = slice[1]
-            slice2 = slice[2]
-            slice3 = slice[3]
-            slice2 .= f.(slice1, slice2, slice3)
-            return slice2
-        end
-    elseif U == V
-        map(slices, AbstractVector{V}) do slice
-            slice1 = slice[1]
-            slice2 = slice[2]
-            slice3 = slice[3]
-            slice3 .= f.(slice1, slice2, slice3)
-            return slice3
-        end     
-    else
+    # if T == V
+    #     map(slices, AbstractVector{V}) do slice
+    #         slice1 = slice[1]
+    #         slice2 = slice[2]
+    #         slice3 = slice[3]
+    #         slice1 .= f.(slice1, slice2, slice3)
+    #         return slice1
+    #     end
+    # elseif S == V
+    #     map(slices, AbstractVector{V}) do slice
+    #         slice1 = slice[1]
+    #         slice2 = slice[2]
+    #         slice3 = slice[3]
+    #         slice2 .= f.(slice1, slice2, slice3)
+    #         return slice2
+    #     end
+    # elseif U == V
+    #     map(slices, AbstractVector{V}) do slice
+    #         slice1 = slice[1]
+    #         slice2 = slice[2]
+    #         slice3 = slice[3]
+    #         slice3 .= f.(slice1, slice2, slice3)
+    #         return slice3
+    #     end     
+    # else
         buffer = Vector{V}(slicelength)
         map(slices, AbstractVector{V}) do slice
             slice1 = slice[1]
@@ -163,5 +153,6 @@ function mapslice3(f::Function, slices::ConsSeq{Tuple{AbstractVector{T}, Abstrac
                 return v
             end
         end       
-    end
+    #end
 end
+
