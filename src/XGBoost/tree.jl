@@ -31,6 +31,11 @@ end
 
 struct Tree
     layers::Vector{TreeLayer}
+    λ::Real
+    γ::Real
+    min∂²𝑙::Real
+    maxdepth::Integer
+    slicelength::Integer
 end
 
 mutable struct TreeGrowState

@@ -29,6 +29,10 @@ mutable struct CovariateStats
     max::Float64
 end
 
+function Base.length(dataframe::AbstractDataFrame)
+    dataframe.length
+end
+
 getlevels(factor::AbstractFactor{T}) where {T<:Unsigned} = factor.levels
 
 getname(factor::AbstractFactor{T}) where {T<:Unsigned} = factor.name
@@ -65,11 +69,7 @@ function DataFrame(path::String)
         datpath = joinpath(dirname(headerpath), datacol["filename"])
 
         if datatype == "Float32"
-            data = Vector{UInt8}(4 * len)
-            open(datpath) do f
-                readbytes!(f, data)
-            end
-            cov = Covariate{Float32}(name, reinterpret(Float32, data))
+            cov = FileCovariate{Float32}(name, len, datpath)
             push!(covariates, cov)
         end
 
@@ -78,11 +78,7 @@ function DataFrame(path::String)
             if length(levels) == 0
                 levels = Vector{String}()
             end
-            data = Vector{UInt8}(len)
-            open(datpath) do f
-                readbytes!(f, data)
-            end 
-            factor = Factor{UInt8}(name, levels, data) 
+            factor = FileFactor{UInt8}(name, len, levels, datpath)
             push!(factors, factor)         
         end
 
@@ -91,11 +87,7 @@ function DataFrame(path::String)
             if length(levels) == 0
                 levels = Vector{String}()
             end
-            data = Vector{UInt8}(2 * len)
-            open(datpath) do f
-                readbytes!(f, data)
-            end  
-            factor = Factor{UInt16}(name, levels, reinterpret(UInt16, data)) 
+            factor = FileFactor{UInt16}(name, len, levels, datpath)
             push!(factors, factor)          
         end
 
@@ -104,11 +96,7 @@ function DataFrame(path::String)
             if length(levels) == 0
                 levels = Vector{String}()
             end
-            data = Vector{UInt8}(4 * len)
-            open(datpath) do f
-                readbytes!(f, data)
-            end  
-            factor = Factor{UInt32}(name, levels, reinterpret(UInt32, data)) 
+            factor = FileFactor{UInt32}(name, len, levels, datpath)
             push!(factors, factor)          
         end
     end
@@ -144,8 +132,6 @@ function Base.summary(factor::AbstractFactor{T}) where {T<:Unsigned}
     missingfreq = freq[1]
     missingrelfreq = missingfreq / len
     println(io, @sprintf("%-16s%12d", "Obs Count", len))
-    #println(io, @sprintf("%-16s%12d", "Missing Freq", missingfreq))
-    #println(io, @sprintf("%-16s%12G", "Missing Freq (%)", 100.0 * missingrelfreq))
     println(io, @sprintf("%-16s%15s%15s", "Level", "Frequency", "Frequency(%)"))
     println(io, @sprintf("%-16s%15d%15G", MISSINGLEVEL, missingfreq, 100.0 * missingfreq / len))
     for (index, level) in enumerate(levels)

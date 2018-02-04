@@ -4,7 +4,7 @@ import JSON
 abstract type ColumnImporter end
 
 mutable struct CatImporter <: ColumnImporter
-    colname::String
+    colname::AbstractString
     filepath::String
     length::Int64
     levelmap::Dict{String, Int64}
@@ -12,23 +12,24 @@ mutable struct CatImporter <: ColumnImporter
     levelfreq::Dict{String, Int64}
     isdropped::Bool
     isnumeric::Function
+    nas::Set{String}
 end
 
 mutable struct NumImporter <: ColumnImporter
-    colname::String
+    colname::AbstractString
     filepath::String
     length::Int64
     nancount::Int64
     zerocount::Int64
 end
 
-function CatImporter(colname::String, outfolder::String, isnumeric::Function)
+function CatImporter(colname::AbstractString, outfolder::String, isnumeric::Function, nas::Set{String}, isdropped)
     filepath = joinpath(outfolder, "$(randstring(10)).dat")
-    CatImporter(colname, filepath, 0, Dict{String, Int64}(MISSINGLEVEL => 0), Dict{Int64, String}(0 => MISSINGLEVEL), Dict{String, Int64}(), false, isnumeric)
+    CatImporter(colname, filepath, 0, Dict{String, Int64}(MISSINGLEVEL => 0), Dict{Int64, String}(0 => MISSINGLEVEL), Dict{String, Int64}(), isdropped, isnumeric, nas)
 end
 
 struct DataColumnInfo
-    name::String
+    name::AbstractString
     length::Int64
     filename::String
     datatype::String
@@ -37,7 +38,7 @@ end
 
 function DataColumnInfo(catimporter::CatImporter)
     levelcount = length(catimporter.levelmap)
-    datatype = levelcount <= typemax(UInt8) + 1 ? "UInt8" : "UInt16"
+    datatype = levelcount <= typemax(UInt8) + 1 ? "UInt8" : (levelcount <= typemax(UInt16) + 1 ? "UInt16" : UInt32)
     levels = Vector{String}(levelcount - 1)
     for (k, v) in catimporter.levelmap
         if v > 0
@@ -105,31 +106,40 @@ function uint16tonumcolumn(levelindexmap::Dict{Int64, String}, frompath::String,
     end
 end
 
-function importlevels(colimporter::NumImporter, levels::Vector{String})
+function importlevels(colimporter::NumImporter, datalines::Vector{Vector{SubString{String}}}, colindex::Integer)
     iostream = open(colimporter.filepath, "a")
-    for level in levels
+    collength = colimporter.length
+    for line in datalines
+        level = line[colindex]
         v = tryparse(Float32, level)
         if isnull(v)
             write(iostream, NaN32)
         else
             write(iostream, get(v))
         end
-        colimporter.length += 1
+        collength += 1
     end
     close(iostream)
+    colimporter.length = collength
     colimporter
 end
 
 
-function importlevels(colimporter::CatImporter, levels::Vector{String})
+function importlevels(colimporter::CatImporter, datalines::Vector{Vector{SubString{String}}}, colindex::Integer)
     if !colimporter.isdropped
 
         levelmap = colimporter.levelmap
         levelindexmap = colimporter.levelindexmap
         levelfreq = colimporter.levelfreq
+        nas = colimporter.nas
         iostream = open(colimporter.filepath, "a")
+        collength = colimporter.length
 
-        for level in levels
+        for line in datalines
+            level = strip(line[colindex])
+            if level in nas
+                level = MISSINGLEVEL
+            end
             levelcount = length(levelmap)
             levelindex = get(levelmap, level, levelcount)
             freq = get(levelfreq, level, 0)
@@ -139,7 +149,7 @@ function importlevels(colimporter::CatImporter, levels::Vector{String})
             if freq == 0 && levelcount == typemax(UInt8) + 1
                 newpath = joinpath(dirname(colimporter.filepath), "$(randstring(10)).dat")
                 close(iostream)
-                widencatcolumn(colimporter.filepath, newpath, colimporter.length)
+                widencatcolumn(colimporter.filepath, newpath, collength)
                 oldpath = colimporter.filepath
                 colimporter.filepath = newpath
                 iostream = open(newpath, "a")
@@ -155,8 +165,9 @@ function importlevels(colimporter::CatImporter, levels::Vector{String})
             else
                 write(iostream, convert(UInt8, levelindex))
             end
-            colimporter.length += 1
+            collength += 1
         end
+        colimporter.length = collength
         close(iostream)
         if colimporter.isdropped
             rm(colimporter.filepath)
@@ -164,49 +175,47 @@ function importlevels(colimporter::CatImporter, levels::Vector{String})
         if !colimporter.isdropped && colimporter.isnumeric(colimporter.colname, levelfreq)
             newpath = joinpath(dirname(colimporter.filepath), "$(randstring(10)).dat")
             if length(colimporter.levelmap) > typemax(UInt8) + 1
-                uint16tonumcolumn(levelindexmap, colimporter.filepath, newpath, colimporter.length)
+                uint16tonumcolumn(levelindexmap, colimporter.filepath, newpath, collength)
             else
-                uint8tonumcolumn(levelindexmap, colimporter.filepath, newpath, colimporter.length)
+                uint8tonumcolumn(levelindexmap, colimporter.filepath, newpath, collength)
             end
-            colimporter = NumImporter(colimporter.colname, newpath, colimporter.length, 0, 0)
+            colimporter = NumImporter(colimporter.colname, newpath, collength, 0, 0)
         end
     end
     colimporter
 end
 
-function importdata(colimporters::Vector{ColumnImporter}, datalines::Vector{Vector{String}})
+function importdata(colimporters::Vector{ColumnImporter}, datalines::Vector{Vector{SubString{String}}})
     colcount = length(colimporters)
-    coldata = begin
-        foldl([Vector{String}() for i = 1:colcount], datalines) do acc, line
-        for i = 1:colcount
-            level = get(line, i, MISSINGLEVEL)
-            if level == ""
-                level = MISSINGLEVEL
-            end
-            push!(acc[i], level)
-        end
-        acc
-        end
-    end
-
-    for i = 1:colcount
-        levels = coldata[i]
-        colimporters[i] = importlevels(colimporters[i], levels)
+    Threads.@threads for i = 1:colcount
+        colimporters[i] = importlevels(colimporters[i], datalines, i)
     end
     colimporters
 end
 
-function importcsv(path::String, maxobs::Integer, chunksize::Integer, isnumeric::Function)
+function isanylevelnumeric(colname::AbstractString, levelfreq::Dict{String, Int64})
+    any([!isnull(tryparse(Float32, strip(k))) for k in keys(levelfreq)])
+end
+
+function importcsv(path::String; maxobs::Integer = -1, chunksize::Integer = SLICELENGTH, nas::Vector{String} = Vector{String}(),
+                   isnumeric::Function = isanylevelnumeric, drop::Vector{String} = Vector{String}())
+    nas = Set{String}(nas)
+    push!(nas, "")
     path = abspath(path)
     outfolder = splitext(path)[1]
+    #rm(outfolder; force = true, recursive = true)
     mkpath(outfolder)
     iostream = open(path)
-    lines::Seq{Vector{String}} = map((line -> convert(Vector{String}, split(line, ","))), Iterators.take(Seq(String, iostream, nextline), maxobs + 1), Vector{String})
+    lineseq = maxobs > -1 ? Iterators.take(Seq(String, iostream, nextline), maxobs + 1) : Seq(String, iostream, nextline)
+    lines = map((line -> split(line, ",")), lineseq, Vector{SubString{String}})
     colnames, datalines = lines |> tryread
     if !isnull(colnames)
         colnames = get(colnames)
-        colimporters::Vector{ColumnImporter} = map((colname -> CatImporter(colname, outfolder, isnumeric)), colnames)
+        colimporters::Vector{ColumnImporter} = map((colname -> CatImporter(colname, outfolder, isnumeric, nas, colname in drop)), colnames)
         colimporters = fold(importdata, colimporters, chunkbysize(datalines, chunksize))
+    end
+    colimporters = filter(colimporters) do colimp
+        isa(colimp, NumImporter) || !colimp.isdropped
     end
     header = DataHeader([DataColumnInfo(colimp) for colimp in colimporters])
     headerjson = JSON.json(header)
@@ -214,19 +223,5 @@ function importcsv(path::String, maxobs::Integer, chunksize::Integer, isnumeric:
     open(headerpath, "a") do f
         write(f, headerjson)
     end
-end
-
-function importcsv(path::String, maxobs::Integer, chunksize::Integer)
-    isnumeric = (colname::String, levelfreq::Dict{String, Int64}) -> 
-                 begin
-                     res = false
-                     for k in keys(levelfreq)
-                         if !isnull(tryparse(Float32, k))
-                            res = true
-                            break
-                         end
-                     end
-                    res
-                 end
-    importcsv(path, maxobs, chunksize, isnumeric)
+    return
 end

@@ -104,16 +104,15 @@ function chunkbysize(xs::ConsSeq{T}, n::Integer) where {T}
         begin
             state, next = xs.genfun()
             state, s -> begin
-                            k = n
-                            chunk = Vector{T}()
+                            chunk = Vector{T}(n)
                             newstate = s
-                            while k >= 1
+                            for k in 1:n
                                 v, newstate = next(newstate)
                                 if !isnull(v)
-                                    push!(chunk, get(v))
-                                    k -= 1
+                                    chunk[k] = get(v)
                                 else
-                                    k = 0
+                                    resize!(chunk, k - 1)
+                                    break
                                 end
                             end
                             if length(chunk) == 0

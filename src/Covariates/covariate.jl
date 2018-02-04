@@ -20,3 +20,7 @@ end
 function slice(covariate::Covariate{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:AbstractFloat}
     slice(covariate.data, fromobs, toobs, slicelength)
 end
+
+function Base.map(covariate::Covariate, dataframe::AbstractDataFrame)
+    dataframe[getname(covariate)]
+end

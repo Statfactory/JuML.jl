@@ -12,12 +12,12 @@ function ConstFactor(length::Integer)
     ConstFactor("Intercept", "Intercept", length)
 end
 
-function slice(covariate::ConstFactor, fromobs::Integer, toobs::Integer, slicelength::Integer)
+function slice(factor::ConstFactor, fromobs::Integer, toobs::Integer, slicelength::Integer)
     if fromobs > toobs
         EmptySeq{AbstractVector{UInt8}}()
     else
         fromobs = max(1, fromobs)
-        toobs = min(toobs, length(covariate))
+        toobs = min(toobs, length(factor))
         slicelength = min(max(1, slicelength), toobs - fromobs + 1)
         buffer = ones(UInt8, slicelength) 
         map(Seq(Tuple{Int64, Int64}, (fromobs, toobs, slicelength), nextslice), AbstractVector{UInt8}) do rng
@@ -28,4 +28,8 @@ function slice(covariate::ConstFactor, fromobs::Integer, toobs::Integer, slicele
             end
         end
     end
+end
+
+function Base.map(factor::ConstFactor, dataframe::AbstractDataFrame)
+    ConstFactor(factor.name, factor.level, length(dataframe))
 end

@@ -25,3 +25,7 @@ function covariate(name::String, transform::Function)
     basecov::AbstractCovariate ->
         TransCovariate(name, basecov, transform)
 end
+
+function Base.map(covariate::TransCovariate, dataframe::AbstractDataFrame)
+    TransCovariate(covariate.name, map(covariate.basecovariate, dataframe), covariate.transform)
+end

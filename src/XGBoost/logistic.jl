@@ -34,3 +34,14 @@ function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
     pred = sigmoid.(fm)
     (trees, pred)
 end
+
+function predict(trees::Vector{Tree}, dataframe::AbstractDataFrame, η::Real)
+    μ = 0.5
+    f0 = Vector{Float64}(length(dataframe))
+    fill!(f0, logitraw(μ))  
+    for tree in trees
+        predraw = predict(tree, dataframe)
+        f0 .= muladd.(η, predraw, f0)
+    end
+    sigmoid.(f0)
+end

@@ -28,3 +28,7 @@ function slice(covariate::ConstCovariate{T}, fromobs::Integer, toobs::Integer, s
         end
     end
 end
+
+function Base.map(covariate::ConstCovariate, dataframe::AbstractDataFrame)
+    ConstCovariate(covariate.name, length(dataframe), covariate.value)
+end

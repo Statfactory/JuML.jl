@@ -39,3 +39,7 @@ function slice(factor::BinCovFactor{T}, fromobs::Integer, toobs::Integer, slicel
     slices = slice(factor.covariate, fromobs, toobs, slicelength)
     mapslice(f, slices, slicelength, T)
 end
+
+function Base.map(factor::BinCovFactor{T}, dataframe::AbstractDataFrame) where {T<:Unsigned}
+    BinCovFactor{T}(factor.name, factor.bins, map(factor.covariate, dataframe))
+end

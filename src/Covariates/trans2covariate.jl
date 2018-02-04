@@ -20,3 +20,8 @@ function slice(covariate::Trans2Covariate{S, T, U}, fromobs::Integer, toobs::Int
     slices = zip2(slice(basecov1, fromobs, toobs, slicelength), slice(basecov2, fromobs, toobs, slicelength)) 
     mapslice2(f, slices, slicelength, U)
 end
+
+function Base.map(covariate::Trans2Covariate, dataframe::AbstractDataFrame)
+    Trans2Covariate(covariate.name, map(covariate.basecovariate1, dataframe), map(covariate.basecovariate1, dataframe),
+                    covariate.transform)
+end

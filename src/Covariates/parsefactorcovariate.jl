@@ -25,3 +25,7 @@ function slice(cov::ParseFactorCovariate{S, T}, fromobs::Integer, toobs::Integer
     slices = slice(cov.basefactor, fromobs, toobs, slicelength)
     mapslice(f, slices, slicelength, T)  
 end
+
+function Base.map(covariate::ParseFactorCovariate, dataframe::AbstractDataFrame)
+    ParseFactorCovariate(covariate.name, map(covariate.basefactor, dataframe), covariate.transform)
+end

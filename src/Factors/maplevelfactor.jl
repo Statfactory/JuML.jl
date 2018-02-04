@@ -47,3 +47,7 @@ function slice(factor::MapLevelFactor{S, T}, fromobs::Integer, toobs::Integer, s
     slices = slice(factor.basefactor, fromobs, toobs, slicelength)
     mapslice(f, slices, slicelength, T)
 end
+
+function Base.map(factor::MapLevelFactor{S, T}, dataframe::AbstractDataFrame) where {S<:Unsigned} where {T<:Unsigned}
+    MapLevelFactor(factor.name, map(factor.basefactor, dataframe), factor.transform)
+end

@@ -25,3 +25,7 @@ function slice(covariate::CachedCovariate{T}, fromobs::Integer, toobs::Integer, 
         end
     end
 end
+
+function Base.map(covariate::CachedCovariate, dataframe::AbstractDataFrame)
+    CachedCovariate(map(covariate.basecovariate, dataframe))
+end

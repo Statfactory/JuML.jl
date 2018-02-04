@@ -270,10 +270,9 @@ function nextlayer(state::TreeGrowState)
     Nullable{TreeLayer}(layer), state      
 end
 
-function predict(tree::Tree, nodeids::Vector{<:Integer}, λ::Real)
-    lastlayer = tree.layers[end]
-    weights = Vector{Float64}(2 * length(lastlayer.nodes))
-    for (i, node) in enumerate(lastlayer.nodes)
+function predict(treelayer::TreeLayer, nodeids::Vector{<:Integer}, λ)
+    weights = Vector{Float64}(2 * length(treelayer.nodes))
+    for (i, node) in enumerate(treelayer.nodes)
         if isa(node, SplitNode)
             weights[2 * i - 1] = getweight(node.leftgradient, λ)
             weights[2 * i] = getweight(node.rightgradient, λ)
@@ -283,6 +282,18 @@ function predict(tree::Tree, nodeids::Vector{<:Integer}, λ::Real)
         end
     end
     (nodeid -> nodeid > 0 ? weights[nodeid] : NaN64).(nodeids)
+end
+
+function predict(tree::Tree, dataframe::AbstractDataFrame)
+    len = length(dataframe)
+    maxnodecount = 2 ^ tree.maxdepth
+    nodeids = maxnodecount <= typemax(UInt8) ? ones(UInt8, len) : (maxnodecount <= typemax(UInt16) ? ones(UInt16, len) : ones(UInt32, len))
+    nodes = Vector{TreeNode}()
+    for layer in tree.layers
+        nodes = [isa(n, SplitNode) ? SplitNode(map(n.factor, dataframe), n.leftpartition, n.rightpartition, n.leftgradient, n.rightgradient, n.loss) : n for n in layer.nodes]
+        splitnodeids!(nodeids, TreeLayer(nodes), tree.slicelength)
+    end
+    predict(TreeLayer(nodes), nodeids, tree.λ)
 end
 
 function growtree(factors::Vector{<:AbstractFactor}, ∂𝑙covariate::AbstractCovariate,
@@ -298,8 +309,8 @@ function growtree(factors::Vector{<:AbstractFactor}, ∂𝑙covariate::AbstractC
     push!(nodes0, LeafNode(grad0, true, Dict([f => LevelPartition(ones(Bool, length(getlevels(f))), true) for f in factors])))
     state0 = TreeGrowState(nodeids, nodes0, factors, ∂𝑙covariate, ∂²𝑙covariate, λ, γ, min∂²𝑙, slicelength)
     layers = collect(Iterators.take(Seq(TreeLayer, state0, nextlayer), maxdepth))
-    tree = Tree(layers)
-    pred = predict(tree, nodeids, λ)
+    tree = Tree(layers, λ, γ, min∂²𝑙, maxdepth, slicelength)
+    pred = predict(tree.layers[end], nodeids, λ)
     tree, pred
 end
 
