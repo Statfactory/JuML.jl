@@ -18,7 +18,7 @@ function slice(factor::ConstFactor, fromobs::Integer, toobs::Integer, slicelengt
     else
         fromobs = max(1, fromobs)
         toobs = min(toobs, length(factor))
-        slicelength = min(max(1, slicelength), toobs - fromobs + 1)
+        slicelength = verifyslicelength(fromobs, toobs, slicelength) 
         buffer = ones(UInt8, slicelength) 
         map(Seq(Tuple{Int64, Int64}, (fromobs, toobs, slicelength), nextslice), AbstractVector{UInt8}) do rng
             if rng[2] - rng[1] + 1 == slicelength

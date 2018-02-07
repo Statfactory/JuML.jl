@@ -10,6 +10,7 @@ getname(factor::WiderFactor{S, T}) where {S<:Unsigned} where {T<:Unsigned} = get
 
 function slice(factor::WiderFactor{S, T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {S<:Unsigned} where {T<:Unsigned}
     f = x -> convert(T, x)
+    slicelength = verifyslicelength(fromobs, toobs, slicelength) 
     mapslice(f, slice(factor.basefactor, fromobs, toobs, slicelength), slicelength, T)  
 end
 

@@ -20,6 +20,10 @@ function BinCovFactor(name::String, bins::AbstractVector{T}, covariate::Abstract
     end
 end
 
+function factor(covariate::AbstractCovariate{S}, bins::AbstractVector{T}) where {T<:Real} where {S<:AbstractFloat}
+    BinCovFactor(getname(covariate), bins, covariate)
+end
+
 function slice(factor::BinCovFactor{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:Unsigned}
     bins = factor.bins
     binlenm1 = convert(T, length(bins) - 1)
@@ -36,6 +40,7 @@ function slice(factor::BinCovFactor{T}, fromobs::Integer, toobs::Integer, slicel
                 end
             end
         )
+    slicelength = verifyslicelength(fromobs, toobs, slicelength) 
     slices = slice(factor.covariate, fromobs, toobs, slicelength)
     mapslice(f, slices, slicelength, T)
 end

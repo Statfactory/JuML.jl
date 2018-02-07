@@ -27,6 +27,7 @@ end
 function slice(factor::PermuteFactor{S, T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:Unsigned} where {S<:Unsigned}
     newindex = factor.newindex
     f = (i::S -> newindex[i + 1])
+    slicelength = verifyslicelength(fromobs, toobs, slicelength) 
     slices = slice(factor.basefactor, fromobs, toobs, slicelength)
     mapslice(f, slices, slicelength, T)
 end

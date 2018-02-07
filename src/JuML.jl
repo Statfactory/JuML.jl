@@ -6,7 +6,17 @@
 module JuML
 export importcsv,
        Seq,
-       DataFrame
+       DataFrame,
+       factor,
+       covariate,
+       getname,
+       getlevels,
+       xgblogit,
+       predict,
+       getstats,
+       CovariateStats,
+       FactorStats,
+       LevelStats
 
 include("const.jl")
 include("DataStructures/seq.jl")

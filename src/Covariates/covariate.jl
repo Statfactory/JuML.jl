@@ -17,6 +17,15 @@ function Covariate(data::AbstractVector{T}) where {T<:Integer}
     Covariate{Float32}("", convert(Vector{Float32}, data))
 end
 
+function Covariate{T}(name::String, length::Integer, datpath::String) where {T<:AbstractFloat}
+    data = Vector{UInt8}(sizeof(T) * length)
+    open(datpath) do f
+        readbytes!(f, data)
+    end
+    covdata = reinterpret(T, data)
+    Covariate{T}(name, covdata)
+end
+
 function slice(covariate::Covariate{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:AbstractFloat}
     slice(covariate.data, fromobs, toobs, slicelength)
 end

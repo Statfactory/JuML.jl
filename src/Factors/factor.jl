@@ -6,6 +6,15 @@ end
 
 Base.length(factor::Factor{T}) where {T<:Unsigned} = length(factor.data)
 
+function Factor{T}(name::String, length::Integer, levels::Vector{String}, datpath::String) where {T<:Unsigned}
+    data = Vector{UInt8}(sizeof(T) * length)
+    open(datpath) do f
+        readbytes!(f, data)
+    end
+    factordata = reinterpret(T, data)
+    Factor{T}(name, levels, factordata)
+end
+
 function Factor(name::String, data::AbstractVector{<:AbstractString})
     maxlevelcount = length(unique(data))
     if maxlevelcount <= typemax(UInt8) + 1

@@ -29,6 +29,19 @@ mutable struct CovariateStats
     max::Float64
 end
 
+mutable struct LevelStats
+    level::String
+    freq::Int64
+    freqpcnt::Float64
+end
+
+mutable struct FactorStats
+    obscount::Int64
+    missingfreq::Int64
+    missingpcnt::Float64
+    levelstats::Vector{LevelStats}
+end
+
 function Base.length(dataframe::AbstractDataFrame)
     dataframe.length
 end
@@ -51,7 +64,7 @@ function widenfactors(factors::Vector{<:AbstractFactor})
     end
 end
 
-function DataFrame(path::String)
+function DataFrame(path::String; preload::Bool = true)
     path = abspath(path)
     headerpath = isfile(path) ? path : joinpath(path, "header.txt")
     headerjson = open(headerpath) do f 
@@ -69,8 +82,11 @@ function DataFrame(path::String)
         datpath = joinpath(dirname(headerpath), datacol["filename"])
 
         if datatype == "Float32"
-            cov = FileCovariate{Float32}(name, len, datpath)
-            push!(covariates, cov)
+            if preload
+                push!(covariates, Covariate{Float32}(name, len, datpath))
+            else
+                push!(covariates, FileCovariate{Float32}(name, len, datpath))
+            end
         end
 
         if datatype == "UInt8"
@@ -78,8 +94,11 @@ function DataFrame(path::String)
             if length(levels) == 0
                 levels = Vector{String}()
             end
-            factor = FileFactor{UInt8}(name, len, levels, datpath)
-            push!(factors, factor)         
+            if preload
+                push!(factors, Factor{UInt8}(name, len, levels, datpath)) 
+            else
+                push!(factors, FileFactor{UInt8}(name, len, levels, datpath)) 
+            end
         end
 
         if datatype == "UInt16"
@@ -87,8 +106,11 @@ function DataFrame(path::String)
             if length(levels) == 0
                 levels = Vector{String}()
             end
-            factor = FileFactor{UInt16}(name, len, levels, datpath)
-            push!(factors, factor)          
+            if preload
+                push!(factors, Factor{UInt16}(name, len, levels, datpath))  
+            else
+                push!(factors, FileFactor{UInt16}(name, len, levels, datpath))   
+            end
         end
 
         if datatype == "UInt32"
@@ -96,8 +118,11 @@ function DataFrame(path::String)
             if length(levels) == 0
                 levels = Vector{String}()
             end
-            factor = FileFactor{UInt32}(name, len, levels, datpath)
-            push!(factors, factor)          
+            if preload
+                push!(factors, Factor{UInt32}(name, len, levels, datpath))  
+            else
+                push!(factors, FileFactor{UInt32}(name, len, levels, datpath))   
+            end       
         end
     end
     DataFrame(len, factors, covariates, AbstractBoolVariate[])
@@ -118,24 +143,12 @@ end
 
 function Base.summary(factor::AbstractFactor{T}) where {T<:Unsigned}
     io = IOBuffer()
-    len = length(factor)
-    levels = getlevels(factor)
-    levelcount = length(levels)
-    init = zeros(Int64, levelcount + 1)
-    slices = slice(factor, 1, len, SLICELENGTH)
-    freq = fold(init, slices) do frq, slice
-        for levelindex in slice
-            frq[levelindex + 1] += 1 
-        end
-        frq
-    end
-    missingfreq = freq[1]
-    missingrelfreq = missingfreq / len
-    println(io, @sprintf("%-16s%12d", "Obs Count", len))
+    factorstats = getstats(factor)
+    println(io, @sprintf("%-16s%15d", "Obs Count", factorstats.obscount))
     println(io, @sprintf("%-16s%15s%15s", "Level", "Frequency", "Frequency(%)"))
-    println(io, @sprintf("%-16s%15d%15G", MISSINGLEVEL, missingfreq, 100.0 * missingfreq / len))
-    for (index, level) in enumerate(levels)
-        println(io, @sprintf("%-16s%15d%15G", level, freq[index + 1], 100.0 * freq[index + 1] / len))
+    println(io, @sprintf("%-16s%15d%15G", MISSINGLEVEL, factorstats.missingfreq, factorstats.missingpcnt))
+    for levelstats in factorstats.levelstats
+        println(io, @sprintf("%-16s%15d%15G", levelstats.level, levelstats.freq, levelstats.freqpcnt))
     end
     print(String(take!(io)))
 end
@@ -157,6 +170,24 @@ function Base.summary(boolvar::AbstractBoolVariate)
     println(io, @sprintf("%-15s%12d", "True Freq", truefreq))
     println(io, @sprintf("%-15s%12G", "True Freq (%)", 100.0 * truefreq / len))
     print(String(take!(io)))
+end
+
+function getstats(factor::AbstractFactor{T}) where {T<:Unsigned}
+    len = length(factor)
+    levels = getlevels(factor)
+    levelcount = length(levels)
+    init = zeros(Int64, levelcount + 1)
+    slices = slice(factor, 1, len, SLICELENGTH)
+    freq = fold(init, slices) do frq, slice
+        for levelindex in slice
+            frq[levelindex + 1] += 1 
+        end
+        frq
+    end
+    missingfreq = freq[1]
+    missingpcnt = 100.0 * missingfreq / len
+    levelstats = [LevelStats(levels[i], freq[i + 1], 100.0 * freq[i + 1] / len) for i in 1:levelcount]  
+    FactorStats(len, missingfreq, missingpcnt, levelstats)
 end
 
 function getstats(covariate::AbstractCovariate{T}) where {T<:AbstractFloat}
@@ -246,5 +277,10 @@ function Base.show(io::IO, factor::AbstractFactor{T}) where {T<:Unsigned}
     else
         println(io, "Factor $(getname(factor)) with $(len) obs and $(levelcount) levels")
     end
+end
+
+function Base.convert(::Type{Vector{T}}, covariate::AbstractCovariate{T}) where {T<:AbstractFloat}
+    v, _ = tryread(slice(covariate, 1, length(covariate), length(covariate)))
+    get(v)
 end
 

@@ -11,6 +11,7 @@ function slice(boolvar::Trans2BoolVariate, fromobs::Integer, toobs::Integer, sli
     baseboolvar1 = boolvar.baseboolvar1
     baseboolvar2 = boolvar.baseboolvar2
     f = boolvar.transform
+    slicelength = verifyslicelength(fromobs, toobs, slicelength) 
     slices = zip2(slice(baseboolvar1, fromobs, toobs, slicelength), slice(baseboolvar2, fromobs, toobs, slicelength))
     mapslice2(f, slices, slicelength, Bool)
 end

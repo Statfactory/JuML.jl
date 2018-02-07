@@ -1,6 +1,6 @@
 mutable struct LossGradient
-    ∂𝑙::Float64
-    ∂²𝑙::Float64
+    ∂𝑙::Float32
+    ∂²𝑙::Float32
 end
 
 mutable struct LevelPartition
@@ -31,11 +31,12 @@ end
 
 struct Tree
     layers::Vector{TreeLayer}
-    λ::Real
-    γ::Real
-    min∂²𝑙::Real
+    λ::Float32
+    γ::Float32
+    min∂²𝑙::Float32
     maxdepth::Integer
     slicelength::Integer
+    singlethread::Bool
 end
 
 mutable struct TreeGrowState
@@ -44,8 +45,9 @@ mutable struct TreeGrowState
     factors::Vector{<:AbstractFactor}
     ∂𝑙covariate::AbstractCovariate
     ∂²𝑙covariate::AbstractCovariate
-    λ::Real
-    γ::Real
-    min∂²𝑙::Real
+    λ::Float32
+    γ::Float32
+    min∂²𝑙::Float32
     slicelength::Integer
+    singlethread::Bool
 end

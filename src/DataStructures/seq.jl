@@ -202,31 +202,30 @@ function zip4(xs::ConsSeq{T}, ys::ConsSeq{S}, zs::ConsSeq{U}, vs::Seq{V}) where 
             )
 end
 
+ function zipn(xs::Vector{<:Seq{T}}) where {T}
+     EmptySeq{Vector{T}}()
+ end
 
-function zipn(xs::Vector{<:Seq{T}}) where {T}
-    EmptySeq{Vector{T}}()
-end
-
-function zipn(xs::Vector{ConsSeq{T}}) where {T}
-    return ConsSeq{Vector{T}}(() ->
-        begin
-            y = [x.genfun() for x in xs]
-            state = [s for (s, _) in y]
-            next = [f for (_, f) in y]
-            state, sarg ->
-                begin
-                    res = [b(a) for (a, b) in zip(sarg, next)]
-                    newstate = [x for (_, x) in res]
-                    if all([!isnull(a) for (a, b) in res])
-                        v = [get(x) for (x, _) in res]
-                        Nullable{Vector{T}}(v), newstate
-                    else
-                        Nullable{Vector{T}}(), newstate
-                    end
-                end
-        end
-    )
-end
+ function zipn(xs::Vector{ConsSeq{T}}) where {T}
+     return ConsSeq{Vector{T}}(() ->
+         begin
+             y = [x.genfun() for x in xs]
+             state = [s for (s, _) in y]
+             next = [f for (_, f) in y]
+             state, sarg ->
+                 begin
+                     res = [b(a) for (a, b) in zip(sarg, next)]
+                     newstate = [x for (_, x) in res]
+                     if all([!isnull(a) for (a, b) in res])
+                         v = [get(x) for (x, _) in res]
+                         Nullable{Vector{T}}(v), newstate
+                     else
+                         Nullable{Vector{T}}(), newstate
+                     end
+                 end
+         end
+     )
+ end
 
 function Base.foreach(f::Function, xs::Seq{T}) where {T}
     eof = false

@@ -136,7 +136,7 @@ function importlevels(colimporter::CatImporter, datalines::Vector{Vector{SubStri
         collength = colimporter.length
 
         for line in datalines
-            level = strip(line[colindex])
+            level = strip(strip(line[colindex]), ['"'])
             if level in nas
                 level = MISSINGLEVEL
             end
@@ -179,6 +179,7 @@ function importlevels(colimporter::CatImporter, datalines::Vector{Vector{SubStri
             else
                 uint8tonumcolumn(levelindexmap, colimporter.filepath, newpath, collength)
             end
+            rm(colimporter.filepath)
             colimporter = NumImporter(colimporter.colname, newpath, collength, 0, 0)
         end
     end
@@ -203,15 +204,15 @@ function importcsv(path::String; maxobs::Integer = -1, chunksize::Integer = SLIC
     push!(nas, "")
     path = abspath(path)
     outfolder = splitext(path)[1]
-    #rm(outfolder; force = true, recursive = true)
-    mkpath(outfolder)
+    outtempfolder = joinpath(dirname(path), randstring(10))
+    mkpath(outtempfolder)
     iostream = open(path)
     lineseq = maxobs > -1 ? Iterators.take(Seq(String, iostream, nextline), maxobs + 1) : Seq(String, iostream, nextline)
     lines = map((line -> split(line, ",")), lineseq, Vector{SubString{String}})
     colnames, datalines = lines |> tryread
     if !isnull(colnames)
-        colnames = get(colnames)
-        colimporters::Vector{ColumnImporter} = map((colname -> CatImporter(colname, outfolder, isnumeric, nas, colname in drop)), colnames)
+        colnames = map((c -> strip(strip(c), ['"'])), get(colnames))
+        colimporters::Vector{ColumnImporter} = map((colname -> CatImporter(colname, outtempfolder, isnumeric, nas, colname in drop)), colnames)
         colimporters = fold(importdata, colimporters, chunkbysize(datalines, chunksize))
     end
     colimporters = filter(colimporters) do colimp
@@ -219,9 +220,9 @@ function importcsv(path::String; maxobs::Integer = -1, chunksize::Integer = SLIC
     end
     header = DataHeader([DataColumnInfo(colimp) for colimp in colimporters])
     headerjson = JSON.json(header)
-    headerpath = joinpath(outfolder, "header.txt")
+    headerpath = joinpath(outtempfolder, "header.txt")
     open(headerpath, "a") do f
         write(f, headerjson)
     end
-    return
+    mv(outtempfolder, outfolder; remove_destination = true)
 end

@@ -17,13 +17,9 @@ end
 function slice(covariate::TransCovariate{S, T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:AbstractFloat} where {S<:AbstractFloat}
     basecov = covariate.basecovariate
     f = covariate.transform
+    slicelength = verifyslicelength(fromobs, toobs, slicelength) 
     slices = slice(basecov, fromobs, toobs, slicelength)
     mapslice(f, slices, slicelength, T)
-end
-
-function covariate(name::String, transform::Function)
-    basecov::AbstractCovariate ->
-        TransCovariate(name, basecov, transform)
 end
 
 function Base.map(covariate::TransCovariate, dataframe::AbstractDataFrame)

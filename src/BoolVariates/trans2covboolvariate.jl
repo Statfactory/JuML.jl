@@ -11,6 +11,7 @@ function slice(boolvar::Trans2CovBoolVariate{S, T}, fromobs::Integer, toobs::Int
     basecov1 = boolvar.basecovariate1
     basecov2 = boolvar.basecovariate2
     f = boolvar.transform
+    slicelength = verifyslicelength(fromobs, toobs, slicelength) 
     slices = zip2(slice(basecov1, fromobs, toobs, slicelength), slice(basecov2, fromobs, toobs, slicelength)) 
     mapslice2(f, slices, slicelength, Bool)
 end

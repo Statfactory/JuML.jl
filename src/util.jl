@@ -18,13 +18,18 @@ function nextline(iostream::IOStream)
     end
 end
 
+function verifyslicelength(fromobs::Integer, toobs::Integer, slicelength::Integer)
+    toobs < fromobs || slicelength <= 0? 0 : min(slicelength, toobs - fromobs + 1)
+end
+
 function slice(data::AbstractVector{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T}
     if fromobs > toobs
         EmptySeq{AbstractVector{T}}()
     else
         fromobs = max(1, fromobs)
         toobs = min(toobs, length(data))
-        slicelength = min(max(1, slicelength), toobs - fromobs + 1)
+        slicelength = verifyslicelength(fromobs, toobs, slicelength)
+    buffer = Vector{T}(slicelength)
         map(Seq(Tuple{Int64, Int64}, (fromobs, toobs, slicelength), nextslice), AbstractVector{T}) do rng
                 from, to = rng
                 view(data, from:to)
