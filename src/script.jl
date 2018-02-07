@@ -1,6 +1,33 @@
 using JuML
 
-#@time importcsv("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetrain.csv")
+importcsv("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetrain.csv")
+
+importcsv("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetest.csv")
+
+train_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetrain") # note we are passing a path to a folder
+test_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetest") 
+
+factors = train_df.factors
+covariates = train_df.covariates
+
+distance = train_df["Distance"]
+deptime = train_df["DepTime"]
+dep_delayed_15min = train_df["dep_delayed_15min"]
+
+summary(distance)
+summary(deptime)
+summary(dep_delayed_15min)
+
+label = covariate(train_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)
+
+deptime = factor(train_df["DepTime"], 1:2930)
+distance = factor(train_df["Distance"], 11:4962)
+
+factors = [filter((f -> getname(f) != "dep_delayed_15min"), train_df.factors); [deptime, distance]]
+
+model = xgblogit(label, factors; η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 5, caching = true, singlethread = true);
+
+pred = predict(model, test_df)
 
 
 #importcsv("src\\Data\\agaricus_train.csv"; isnumeric = (colname, _) -> colname == "label")
@@ -9,30 +36,10 @@ using JuML
 
 #importcsv("src\\Data\\agaricus.csv")
 
-airlinetraindf = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetrain"; preload = true)
-
 traindf = DataFrame("src\\Data\\agaricus_train"; preload = true)
 testdf = DataFrame("src\\Data\\agaricus_test"; preload = true)
 
 df = DataFrame("src\\Data\\agaricus"; preload = true)
-
-#airline:
-label = covariate(airlinetraindf["dep_delayed_15min"], level -> level == "Y" ? 1.0f0 : 0.0f0)
-deptime = factor(airlinetraindf["DepTime"], 1:2930)
-distance = factor(airlinetraindf["Distance"], 11:4962)
-factors = [filter((f -> getname(f) != "dep_delayed_15min"), airlinetraindf.factors); [deptime, distance]]
-
-stats = getstats(airlinetraindf["dep_delayed_15min"])
-
-summary(airlinetraindf["dep_delayed_15min"])
-
-@time trees, pred = xgblogit(label, factors; η = 1, nrounds = 1, maxdepth = 5, caching = true, singlethread = true);
-
-
-
-pred[1:5]
-sum(pred)
-
 
 #class = df["class"]
 #summary(class)
@@ -42,10 +49,10 @@ sum(pred)
 
 #@time trees, pred = JuML.xgblogit(label, factors; η = 1, nrounds = 1, maxdepth = 1, minchildweight = 0.0, nthreads = 1);
 
-@time trees, pred = JuML.xgblogit(traindf["label"], traindf.factors; η = 1, nrounds = 1, maxdepth = 1, minchildweight = 0.0, singlethread = true, slicelength = 5000);
+@time model = JuML.xgblogit(traindf["label"], traindf.factors; η = 1, nrounds = 1, maxdepth = 1, minchildweight = 0.0, singlethread = true, slicelength = 5000);
 
 
-p = predict(trees, testdf, 1)
+p = predict(model, testdf)
 sum(p)
 sum(pred)
 

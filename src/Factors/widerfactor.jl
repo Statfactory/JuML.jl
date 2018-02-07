@@ -17,3 +17,7 @@ end
 function Base.convert(::Type{WiderFactor{S, T}}, x::AbstractFactor{S}) where {S<:Unsigned} where {T<:Unsigned}
     WiderFactor{S, T}(x)
 end
+
+function Base.map(factor::WiderFactor, dataframe::AbstractDataFrame) 
+    map(factor.basefactor, dataframe)
+end

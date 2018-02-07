@@ -51,3 +51,13 @@ mutable struct TreeGrowState
     slicelength::Integer
     singlethread::Bool
 end
+
+struct XGModel
+    trees::Vector{Tree}
+    λ::Float32
+    γ::Float32
+    η::Float32
+    minchildweight::Float32
+    maxdepth::Integer
+    pred::Vector{Float32}
+end

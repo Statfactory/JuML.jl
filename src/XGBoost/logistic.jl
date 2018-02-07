@@ -40,12 +40,13 @@ function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
         (fm, trees)
     end
     pred = sigmoid.(fm)
-    (trees, pred)
+    XGModel(trees, λ, γ, η, minchildweight, maxdepth, pred)
 end
 
-function predict(trees::Vector{Tree}, dataframe::AbstractDataFrame, η::Real)
+function predict(model::XGModel, dataframe::AbstractDataFrame)
+    trees = model.trees
     μ = 0.5f0
-    η = Float32(η)
+    η = model.η
     f0 = Vector{Float32}(length(dataframe))
     fill!(f0, Float32(logitraw(μ)))  
     for tree in trees

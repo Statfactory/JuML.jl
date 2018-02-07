@@ -37,6 +37,6 @@ function slice(factor::CachedFactor{T}, fromobs::Integer, toobs::Integer, slicel
     end
 end
 
-function Base.map(factor::CachedFactor, dataframe::AbstractDataFrame)
+function Base.map(factor::CachedFactor{T}, dataframe::AbstractDataFrame) where {T<:Unsigned}
     CachedFactor(map(factor.basefactor, dataframe))
 end
