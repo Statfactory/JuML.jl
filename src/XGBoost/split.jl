@@ -279,22 +279,20 @@ function getnewsplit(gradient::Vector{Vector{LossGradient}}, nodes::Vector{TreeN
     newsplit
 end 
 
-function findbestsplit(nodeids::Vector{<:Integer}, nodes::Vector{TreeNode}, factors::Vector{<:AbstractFactor},
-                       ∂𝑙covariate::AbstractCovariate, ∂²𝑙covariate::AbstractCovariate,
-                       λ::Float32, γ::Float32, min∂²𝑙::Float32, slicelength::Integer, singlethread::Bool)
+function findbestsplit(state::TreeGrowState)
 
-    foldl(nodes, enumerate(factors)) do currsplit, nfactor
+    nodecansplit = [n.cansplit for n in state.nodes]
+    foldl(state.nodes, enumerate(state.factors)) do currsplit, nfactor
         n, factor = nfactor
-        partitions = [node.partitions[factor] for node in nodes]
-        nodecansplit = [n.cansplit for n in nodes]
+        partitions = [node.partitions[factor] for node in state.nodes]
 
-        gradient = sumgradient(nodeids, nodecansplit, factor, partitions, ∂𝑙covariate, ∂²𝑙covariate, slicelength, singlethread)
+        gradient = sumgradient(state.nodeids, nodecansplit, factor, partitions, state.∂𝑙covariate, state.∂²𝑙covariate, state.slicelength, state.singlethread)
         
-        newsplit = getnewsplit(gradient, nodes, factor, λ, γ, min∂²𝑙, singlethread)
+        newsplit = getnewsplit(gradient, state.nodes, factor, state.λ, state.γ, state.min∂²𝑙, state.singlethread)
 
         res = Vector{TreeNode}(length(newsplit))
         for i in 1:length(newsplit)
-             if !isnull(newsplit[i]) && get(newsplit[i]).loss < getloss(currsplit[i], λ, γ) 
+             if !isnull(newsplit[i]) && get(newsplit[i]).loss < getloss(currsplit[i], state.λ, state.γ) 
                 res[i] = get(newsplit[i])  
              else
                 res[i] = currsplit[i] 
@@ -304,8 +302,8 @@ function findbestsplit(nodeids::Vector{<:Integer}, nodes::Vector{TreeNode}, fact
     end
 end
 
-function updatestate(state::TreeGrowState, layer::TreeLayer, singlethread::Bool)
-    splitnodeids!(state.nodeids, layer, state.slicelength, singlethread)  
+function updatestate(state::TreeGrowState, layer::TreeLayer)
+    splitnodeids!(state.nodeids, layer, state.slicelength, state.singlethread)  
     factors = state.factors
     newnodes = Vector{LeafNode}(2 * length(state.nodes))
     @inbounds for (i, n) in enumerate(layer.nodes)
@@ -351,11 +349,9 @@ function updatestate(state::TreeGrowState, layer::TreeLayer, singlethread::Bool)
 end
 
 function nextlayer(state::TreeGrowState)
-    layernodes = findbestsplit(state.nodeids, state.nodes, state.factors,
-                               state.∂𝑙covariate, state.∂²𝑙covariate, state.λ,
-                               state.γ, state.min∂²𝑙, state.slicelength, state.singlethread)
+    layernodes = findbestsplit(state)
     layer = TreeLayer(layernodes)
-    updatestate(state, layer, state.singlethread)
+    updatestate(state, layer)
     Nullable{TreeLayer}(layer), state      
 end
 
