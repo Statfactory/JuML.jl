@@ -40,3 +40,7 @@ end
 function Base.map(factor::CachedFactor{T}, dataframe::AbstractDataFrame) where {T<:Unsigned}
     CachedFactor(map(factor.basefactor, dataframe))
 end
+
+function isordinal(factor::CachedFactor{T}) where {T<:Unsigned}
+    isordinal(factor.basefactor)
+end

@@ -70,12 +70,14 @@ factors = [filter((f -> getname(f) != "dep_delayed_15min"), train_df.factors); [
 
 We are now ready to run XGBoost:
 ```
-model = xgblogit(label, factors; η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 5, caching = true, singlethread = true);
+model = xgblogit(label, factors; η = 0.3, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 2, maxdepth = 5, caching = true, singlethread = true);
 ```
 
-We can apply the model to our test data now:
+We can apply the model to our test data and calculate auc:
 ```
 pred = predict(model, test_df)
+testlabel = covariate(test_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)
+auc = getauc(pred, testlabel)
 ```
 
 

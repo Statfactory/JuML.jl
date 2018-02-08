@@ -48,3 +48,7 @@ end
 function Base.map(factor::BinCovFactor{T}, dataframe::AbstractDataFrame) where {T<:Unsigned}
     BinCovFactor(getname(factor), factor.bins, map(factor.covariate, dataframe))
 end
+
+function isordinal(factor::BinCovFactor{T}) where {T<:Unsigned}
+    true
+end

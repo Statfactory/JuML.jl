@@ -284,3 +284,7 @@ function Base.convert(::Type{Vector{T}}, covariate::AbstractCovariate{T}) where 
     get(v)
 end
 
+function isordinal(factor::AbstractFactor{T}) where {T<:Unsigned}
+    false
+ end
+

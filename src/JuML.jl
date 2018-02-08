@@ -7,9 +7,11 @@ export importcsv,
        covariate,
        getname,
        getlevels,
+       isordinal,
        xgblogit,
        predict,
        getstats,
+       getauc,
        CovariateStats,
        FactorStats,
        LevelStats
@@ -24,6 +26,7 @@ include("DataFrame/dataframe.jl")
 include("Factors/factor.jl")
 include("Factors/constfactor.jl")
 include("Factors/filefactor.jl")
+include("Factors/ordinalfactor.jl")
 include("Factors/cachedfactor.jl")
 include("Factors/bincovfactor.jl")
 include("Factors/boolvarfactor.jl")

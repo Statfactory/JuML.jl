@@ -21,3 +21,7 @@ end
 function Base.map(factor::WiderFactor, dataframe::AbstractDataFrame) 
     map(factor.basefactor, dataframe)
 end
+
+function isordinal(factor::WiderFactor)
+    isordinal(factor.basefactor)
+end

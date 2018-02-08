@@ -153,6 +153,7 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
                       λ::Float32, γ::Float32, min∂²𝑙::Float32)
 
     inclmiss = partition.inclmissing
+    isord = isordinal(factor)
     gradstart = inclmiss ? 2 : 1
     ∂𝑙sum0 = sum((grad -> grad.∂𝑙), gradient[gradstart:end])
     ∂²𝑙sum0 = sum((grad -> grad.∂²𝑙), gradient[gradstart:end]) 
@@ -202,37 +203,39 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
         leftwithmisstotal = getloss(left∂𝑙sum + miss∂𝑙, left∂²𝑙sum + miss∂²𝑙, λ, γ) + getloss(∂𝑙sum0 - left∂𝑙sum, ∂²𝑙sum0 - left∂²𝑙sum, λ, γ)
         leftwithoutmisstotal = getloss(left∂𝑙sum, left∂²𝑙sum, λ, γ) + getloss(∂𝑙sum0 - left∂𝑙sum + miss∂𝑙, ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙, λ, γ)
 
-         if singlelevelwithmisstotal < split.loss && (∂²𝑙 + miss∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - ∂²𝑙 >= min∂²𝑙)
-             if singlelevelwitouthmisstotal < singlelevelwithmisstotal && (∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - ∂²𝑙 + miss∂²𝑙 >= min∂²𝑙)
-                 split.leftgradient = LossGradient(∂𝑙, ∂²𝑙)
-                 split.rightgradient = LossGradient(∂𝑙sum0 - ∂𝑙 + miss∂𝑙, ∂²𝑙sum0 - ∂²𝑙 + miss∂²𝑙)
-                 split.leftpartition = LevelPartition([j == i for j in 1:levelcount], false)
-                 split.rightpartition = LevelPartition([j == i ? false : partition.mask[j] for j in 1:levelcount], partition.inclmissing)
-                 split.loss = singlelevelwitouthmisstotal
-             else
-                 split.leftgradient = LossGradient(∂𝑙 + miss∂𝑙, ∂²𝑙 + miss∂²𝑙)
-                 split.rightgradient = LossGradient(∂𝑙sum0 - ∂𝑙, ∂²𝑙sum0 - ∂²𝑙)
-                 split.leftpartition = LevelPartition([j == i for j in 1:levelcount], partition.inclmissing)
-                 split.rightpartition = LevelPartition([j == i ? false : partition.mask[j] for j in 1:levelcount], partition.inclmissing)
-                 split.loss = singlelevelwithmisstotal
-             end
-         end
-
-         if leftwithmisstotal < split.loss && (left∂²𝑙sum + miss∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - left∂²𝑙sum >= min∂²𝑙)
-             if leftwithoutmisstotal < leftwithmisstotal && (left∂²𝑙sum >= min∂²𝑙) && (∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙 >= min∂²𝑙)
-                 split.leftgradient = LossGradient(left∂𝑙sum, left∂²𝑙sum)
-                 split.rightgradient = LossGradient(∂𝑙sum0 - left∂𝑙sum + miss∂𝑙, ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙)
-                 split.leftpartition = LevelPartition([(j <= i) ? partition.mask[j] : false for j in 1:levelcount], false)
-                 split.rightpartition = LevelPartition([j <= i ? false : partition.mask[j] for j in 1:levelcount], partition.inclmissing)
-                 split.loss = leftwithoutmisstotal
-             else
-                 split.leftgradient = LossGradient(left∂𝑙sum + miss∂𝑙, left∂²𝑙sum + miss∂²𝑙)
-                 split.rightgradient = LossGradient(∂𝑙sum0 - left∂𝑙sum, ∂²𝑙sum0 - left∂²𝑙sum)
-                 split.leftpartition = LevelPartition([(j <= i) ? partition.mask[j] : false for j in 1:levelcount], partition.inclmissing)
-                 split.rightpartition = LevelPartition([j <= i ? false : partition.mask[j] for j in 1:levelcount], partition.inclmissing)
-                 split.loss = leftwithmisstotal
-             end
-         end
+        if isord
+            if leftwithmisstotal < split.loss && (left∂²𝑙sum + miss∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - left∂²𝑙sum >= min∂²𝑙)
+                if leftwithoutmisstotal < leftwithmisstotal && (left∂²𝑙sum >= min∂²𝑙) && (∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙 >= min∂²𝑙)
+                    split.leftgradient = LossGradient(left∂𝑙sum, left∂²𝑙sum)
+                    split.rightgradient = LossGradient(∂𝑙sum0 - left∂𝑙sum + miss∂𝑙, ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙)
+                    split.leftpartition = LevelPartition([(j <= i) ? partition.mask[j] : false for j in 1:levelcount], false)
+                    split.rightpartition = LevelPartition([j <= i ? false : partition.mask[j] for j in 1:levelcount], partition.inclmissing)
+                    split.loss = leftwithoutmisstotal
+                else
+                    split.leftgradient = LossGradient(left∂𝑙sum + miss∂𝑙, left∂²𝑙sum + miss∂²𝑙)
+                    split.rightgradient = LossGradient(∂𝑙sum0 - left∂𝑙sum, ∂²𝑙sum0 - left∂²𝑙sum)
+                    split.leftpartition = LevelPartition([(j <= i) ? partition.mask[j] : false for j in 1:levelcount], partition.inclmissing)
+                    split.rightpartition = LevelPartition([j <= i ? false : partition.mask[j] for j in 1:levelcount], partition.inclmissing)
+                    split.loss = leftwithmisstotal
+                end
+            end
+        else
+            if singlelevelwithmisstotal < split.loss && (∂²𝑙 + miss∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - ∂²𝑙 >= min∂²𝑙)
+                if singlelevelwitouthmisstotal < singlelevelwithmisstotal && (∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - ∂²𝑙 + miss∂²𝑙 >= min∂²𝑙)
+                    split.leftgradient = LossGradient(∂𝑙, ∂²𝑙)
+                    split.rightgradient = LossGradient(∂𝑙sum0 - ∂𝑙 + miss∂𝑙, ∂²𝑙sum0 - ∂²𝑙 + miss∂²𝑙)
+                    split.leftpartition = LevelPartition([j == i for j in 1:levelcount], false)
+                    split.rightpartition = LevelPartition([j == i ? false : partition.mask[j] for j in 1:levelcount], partition.inclmissing)
+                    split.loss = singlelevelwitouthmisstotal
+                else
+                    split.leftgradient = LossGradient(∂𝑙 + miss∂𝑙, ∂²𝑙 + miss∂²𝑙)
+                    split.rightgradient = LossGradient(∂𝑙sum0 - ∂𝑙, ∂²𝑙sum0 - ∂²𝑙)
+                    split.leftpartition = LevelPartition([j == i for j in 1:levelcount], partition.inclmissing)
+                    split.rightpartition = LevelPartition([j == i ? false : partition.mask[j] for j in 1:levelcount], partition.inclmissing)
+                    split.loss = singlelevelwithmisstotal
+                end
+            end
+        end
     end
     if count(split.rightpartition.mask) > 0
         Nullable{SplitNode}(split)

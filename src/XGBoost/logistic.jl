@@ -55,3 +55,32 @@ function predict(model::XGModel, dataframe::AbstractDataFrame)
     end
     sigmoid.(f0)
 end
+
+function getauc(pred::Vector{Float32}, label::AbstractCovariate{T}) where {T <: AbstractFloat}
+    label = convert(Vector{T}, label)
+    perm = sortperm(pred; rev = true)
+    sum_auc = 0.0
+    sum_pospair = 0.0
+    sum_npos = 0.0
+    sum_nneg = 0.0
+    buf_pos = 0.0
+    buf_neg = 0.0
+    for i in 1:length(pred)
+        p = pred[perm[i]]
+        r = label[perm[i]]
+        if i != 1 && p != pred[perm[i - 1]]
+            sum_pospair = sum_pospair +  buf_neg * (sum_npos + buf_pos * 0.5)
+            sum_npos = sum_npos + buf_pos
+            sum_nneg = sum_nneg + buf_neg
+            buf_neg = 0.0
+            buf_pos = 0.0
+        end
+        buf_pos = buf_pos + r 
+        buf_neg = buf_neg + (1.0 - r)
+    end
+    sum_pospair = sum_pospair + buf_neg * (sum_npos + buf_pos * 0.5)
+    sum_npos = sum_npos + buf_pos
+    sum_nneg = sum_nneg + buf_neg
+    sum_auc = sum_auc + sum_pospair / (sum_npos * sum_nneg)
+    sum_auc 
+end

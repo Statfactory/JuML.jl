@@ -7,22 +7,22 @@ end
 
 Base.length(factor::PermuteFactor{T}) where {T<:Unsigned} = length(factor.basefactor)
 
-function PermuteFactor(name::String, basefactor::AbstractFactor{T}, islessfun::Function) where {T<:Unsigned}
-    baselevels = getlevels(basefactor)
-    levelcount = length(baselevels)
-    perm = sortperm(baselevels, lt = islessfun)
-    sortlevels = baselevels[perm]
-    newindex = Vector{T}(levelcount + 1)
-    newindex[1] = 0
-    for i in 1:levelcount
-        newindex[i + 1] = perm[i]
-    end
-    PermuteFactor{T, T}(name, sortlevels, basefactor, newindex)
-end
+# function PermuteFactor(name::String, basefactor::AbstractFactor{T}, islessfun::Function) where {T<:Unsigned}
+#     baselevels = getlevels(basefactor)
+#     levelcount = length(baselevels)
+#     perm = sortperm(baselevels, lt = islessfun)
+#     sortlevels = baselevels[perm]
+#     newindex = Vector{T}(levelcount + 1)
+#     newindex[1] = 0
+#     for i in 1:levelcount
+#         newindex[i + 1] = perm[i]
+#     end
+#     PermuteFactor{T, T}(name, sortlevels, basefactor, newindex)
+# end
 
-function PermuteFactor(name::String, basefactor::AbstractFactor{T}) where {T<:Unsigned}
-    PermuteFactor{T}(name, basefactor, isless)
-end
+# function PermuteFactor(name::String, basefactor::AbstractFactor{T}) where {T<:Unsigned}
+#     PermuteFactor{T}(name, basefactor, isless)
+# end
 
 function slice(factor::PermuteFactor{S, T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:Unsigned} where {S<:Unsigned}
     newindex = factor.newindex
@@ -32,7 +32,7 @@ function slice(factor::PermuteFactor{S, T}, fromobs::Integer, toobs::Integer, sl
     mapslice(f, slices, slicelength, T)
 end
 
-function permutefactor(basefactor::AbstractFactor{T}, factortopermute::AbstractFactor{S}) where {T<:Unsigned} where {S<:Unsigned}
+function PermuteFactor(basefactor::AbstractFactor{T}, factortopermute::AbstractFactor{S}) where {T<:Unsigned} where {S<:Unsigned}
     baselevels = getlevels(basefactor)
     baselen = length(baselevels)
     permlevels = getlevels(factortopermute)
@@ -51,5 +51,5 @@ end
 
 function Base.map(factor::PermuteFactor, dataframe::AbstractDataFrame)
     islessfun = (x, y) -> isless(findfirst(factor.levels, x), findfirst(factor.levels, y))
-    PermuteFactor(factor.name, map(factor.basefactor, dataframe), islessfun)
+    OrdinalFactor(factor.name, map(factor.basefactor, dataframe), islessfun)
 end
