@@ -1,8 +1,4 @@
-## push!(LOAD_PATH, "C:\\Users\\adamm_000\\Dropbox\\Development\\JuML\\src")
-## reload("JuML")
-## include("src\\JuML.jl")
-
-
+__precompile__(true)
 module JuML
 export importcsv,
        Seq,

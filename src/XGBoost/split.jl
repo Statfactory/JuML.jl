@@ -81,24 +81,30 @@ end
 function splitnodeidsslice!(nodeids::Vector{<:Integer}, factors, issplitnode::Vector{Bool},
                             leftpartitions::Vector{LevelPartition}, levelcounts::Vector{Int64}, factorindex::Vector{Int64},
                             fromobs::Integer, toobs::Integer, slicelength::Integer)
-    factorslices = zipn([slice(factor, fromobs, toobs, slicelength) for factor in factors])
-    nodeslices = slice(nodeids, fromobs, toobs, slicelength)
-    foreach(zip2(nodeslices, factorslices)) do x
-        nodeslice, fslices = x
-        @inbounds for i in 1:length(nodeslice)
-            nodeid = nodeslice[i]
-            if nodeid > 0
-                if issplitnode[nodeid]
-                    levelindex = fslices[factorindex[nodeid]][i]
-                    if levelindex > levelcounts[nodeid]
-                        nodeslice[i] = 0
+    if length(factors) == 0
+        for i in fromobs:toobs
+            nodeids[i] = 2 * nodeids[i] - 1
+        end
+    else
+        factorslices = zipn([slice(factor, fromobs, toobs, slicelength) for factor in factors])
+        nodeslices = slice(nodeids, fromobs, toobs, slicelength)
+        foreach(zip2(nodeslices, factorslices)) do x
+            nodeslice, fslices = x
+            @inbounds for i in 1:length(nodeslice)
+                nodeid = nodeslice[i]
+                if nodeid > 0
+                    if issplitnode[nodeid]
+                        levelindex = fslices[factorindex[nodeid]][i]
+                        if levelindex > levelcounts[nodeid]
+                            nodeslice[i] = 0
+                        else
+                            leftpartition = leftpartitions[nodeid]
+                            misswithleft = leftpartition.inclmissing
+                            nodeslice[i] = (levelindex == 0 && misswithleft) || leftpartition.mask[levelindex] ? (2 * nodeslice[i] - 1) : (2 * nodeslice[i]) 
+                        end
                     else
-                        leftpartition = leftpartitions[nodeid]
-                        misswithleft = leftpartition.inclmissing
-                        nodeslice[i] = (levelindex == 0 && misswithleft) || leftpartition.mask[levelindex] ? (2 * nodeslice[i] - 1) : (2 * nodeslice[i]) 
+                        nodeslice[i] = 2 * nodeslice[i] - 1
                     end
-                else
-                    nodeslice[i] = 2 * nodeslice[i] - 1
                 end
             end
         end
@@ -112,7 +118,6 @@ function splitnodeids!(nodeids::Vector{<:Integer}, layer::TreeLayer, slicelength
     fromobs = 1
     toobs = len
     issplitnode = [isa(n, SplitNode) for n in nodes]
-    intercept = ConstFactor(len)
     factors = Vector{AbstractFactor}()
     factorindex = Vector{Int64}(nodecount)
     for i in 1:nodecount
