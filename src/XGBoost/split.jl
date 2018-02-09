@@ -1,19 +1,19 @@
 
-function getweight(gradient::LossGradient, λ::Float32) 
+function getweight(gradient::LossGradient{T}, λ::T) where {T<:AbstractFloat} 
     -gradient.∂𝑙 / (gradient.∂²𝑙 + λ)
 end
 
-function getloss(∂𝑙::Float32, ∂²𝑙::Float32, λ::Float32, γ::Float32)
+function getloss(∂𝑙::T, ∂²𝑙::T, λ::T, γ::T) where {T<:AbstractFloat} 
     -0.5 * ∂𝑙 * ∂𝑙 / (∂²𝑙 + λ) + γ
 end
 
-function getloss(node::LeafNode, λ::Float32, γ::Float32)
+function getloss(node::LeafNode, λ::T, γ::T) where {T<:AbstractFloat} 
     ∂𝑙 = node.gradient.∂𝑙
     ∂²𝑙 = node.gradient.∂²𝑙
     getloss(∂𝑙, ∂²𝑙, λ, γ)
 end
 
-function getloss(node::SplitNode, λ::Float32, γ::Float32)
+function getloss(node::SplitNode{T}, λ::T, γ::T) where {T<:AbstractFloat} 
     node.loss
 end
 
@@ -49,7 +49,7 @@ function sumgradientslice!(∂𝑙sum0, ∂²𝑙sum0, nodeids::Vector{<:Integer
 end
 
 function sumgradient(nodeids::Vector{<:Integer}, nodecansplit::Vector{Bool}, factor::AbstractFactor, partitions::Vector{LevelPartition},
-                     ∂𝑙covariate::AbstractCovariate, ∂²𝑙covariate::AbstractCovariate, slicelength::Integer, singlethread::Bool)
+                     ∂𝑙covariate::AbstractCovariate{T}, ∂²𝑙covariate::AbstractCovariate{T}, slicelength::Integer, singlethread::Bool) where {T<:AbstractFloat}
     
     nodecount = length(nodecansplit)
     levelcounts = [p.inclmissing ? length(p.mask) + 1 : length(p.mask) for p in partitions]
@@ -59,8 +59,8 @@ function sumgradient(nodeids::Vector{<:Integer}, nodecansplit::Vector{Bool}, fac
 
     nthreads = singlethread ? 1 : Threads.nthreads()
     threadspace = map((x -> Int64(floor(x))), LinSpace(fromobs, toobs, nthreads + 1))
-    ∂𝑙sum = [[(nodecansplit[node] ? [0.0f0 for i in 1:(levelcounts[node])] : Vector{Float32}()) for node in 1:nodecount] for i in 1:nthreads]
-    ∂²𝑙sum = [[(nodecansplit[node] ? [0.0f0 for i in 1:(levelcounts[node])] : Vector{Float32}()) for node in 1:nodecount] for i in 1:nthreads]
+    ∂𝑙sum = [[(nodecansplit[node] ? [zero(T) for i in 1:(levelcounts[node])] : Vector{T}()) for node in 1:nodecount] for i in 1:nthreads]
+    ∂²𝑙sum = [[(nodecansplit[node] ? [zero(T) for i in 1:(levelcounts[node])] : Vector{T}()) for node in 1:nodecount] for i in 1:nthreads]
 
     if nthreads > 1
         Threads.@threads for i in 1:nthreads
@@ -70,11 +70,11 @@ function sumgradient(nodeids::Vector{<:Integer}, nodecansplit::Vector{Bool}, fac
         end
         ∂𝑙sum = reduce(+, ∂𝑙sum)
         ∂²𝑙sum = reduce(+, ∂²𝑙sum)
-        [(nodecansplit[node] ? [LossGradient(∂𝑙sum[node][i], ∂²𝑙sum[node][i]) for i in 1:(levelcounts[node])] : Vector{LossGradient}()) for node in 1:nodecount]
+        [(nodecansplit[node] ? [LossGradient{T}(∂𝑙sum[node][i], ∂²𝑙sum[node][i]) for i in 1:(levelcounts[node])] : Vector{LossGradient{T}}()) for node in 1:nodecount]
     else
         sumgradientslice!(∂𝑙sum[1], ∂²𝑙sum[1], nodeids, nodecansplit, factor, inclmiss,
                           ∂𝑙covariate, ∂²𝑙covariate, fromobs, toobs, slicelength)
-        [(nodecansplit[node] ? [LossGradient(∂𝑙sum[1][node][i], ∂²𝑙sum[1][node][i]) for i in 1:(levelcounts[node])] : Vector{LossGradient}()) for node in 1:nodecount]
+        [(nodecansplit[node] ? [LossGradient{T}(∂𝑙sum[1][node][i], ∂²𝑙sum[1][node][i]) for i in 1:(levelcounts[node])] : Vector{LossGradient{T}}()) for node in 1:nodecount]
     end
 end
 
@@ -149,21 +149,21 @@ function splitnodeids!(nodeids::Vector{<:Integer}, layer::TreeLayer, slicelength
     nodeids
 end
 
-function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradient::Vector{LossGradient},
-                      λ::Float32, γ::Float32, min∂²𝑙::Float32)
+function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradient::Vector{LossGradient{T}},
+                      λ::T, γ::T, min∂²𝑙::T) where {T<:AbstractFloat}
 
     inclmiss = partition.inclmissing
     isord = isordinal(factor)
     gradstart = inclmiss ? 2 : 1
     ∂𝑙sum0 = sum((grad -> grad.∂𝑙), gradient[gradstart:end])
     ∂²𝑙sum0 = sum((grad -> grad.∂²𝑙), gradient[gradstart:end]) 
-    miss∂𝑙 = inclmiss ? gradient[1].∂𝑙 : 0.0
-    miss∂²𝑙 = inclmiss ? gradient[1].∂²𝑙 : 0.0
+    miss∂𝑙 = inclmiss ? gradient[1].∂𝑙 : zero(T)
+    miss∂²𝑙 = inclmiss ? gradient[1].∂²𝑙 :zero(T)
     bestloss = getloss(∂𝑙sum0 + miss∂𝑙, ∂²𝑙sum0 + miss∂²𝑙, λ, γ)
     levelcount = length(partition.mask)
-    split = SplitNode(factor, partition, LevelPartition(zeros(Bool, levelcount), false),
-                      LossGradient(∂𝑙sum0 + miss∂𝑙, ∂²𝑙sum0 + miss∂²𝑙), LossGradient(0.0f0, 0.0f0),
-                      bestloss)
+    split = SplitNode{T}(factor, partition, LevelPartition(zeros(Bool, levelcount), false),
+                         LossGradient(∂𝑙sum0 + miss∂𝑙, ∂²𝑙sum0 + miss∂²𝑙), LossGradient(zero(T), zero(T)),
+                         bestloss)
     
     left∂𝑙sum = gradient[gradstart].∂𝑙
     left∂²𝑙sum = gradient[gradstart].∂²𝑙
@@ -238,15 +238,15 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
         end
     end
     if count(split.rightpartition.mask) > 0
-        Nullable{SplitNode}(split)
+        Nullable{SplitNode{T}}(split)
     else
-        Nullable{SplitNode}()
+        Nullable{SplitNode{T}}()
     end
 end
 
-function getnewsplit(gradient::Vector{Vector{LossGradient}}, nodes::Vector{TreeNode}, factor::AbstractFactor,
-                     λ::Float32, γ::Float32, min∂²𝑙::Float32, singlethread::Bool)
-    newsplit = Vector{Nullable{SplitNode}}(length(gradient))
+function getnewsplit(gradient::Vector{Vector{LossGradient{T}}}, nodes::Vector{TreeNode}, factor::AbstractFactor,
+                     λ::T, γ::T, min∂²𝑙::T, singlethread::Bool) where {T<:AbstractFloat}
+    newsplit = Vector{Nullable{SplitNode{T}}}(length(gradient))
     if !singlethread
         Threads.@threads for i in 1:length(gradient)
             grad = gradient[i]
@@ -255,10 +255,10 @@ function getnewsplit(gradient::Vector{Vector{LossGradient}}, nodes::Vector{TreeN
                 if count(partition.mask) > 1
                     newsplit[i] = getsplitnode(factor, nodes[i].partitions[factor],  grad, λ, γ, min∂²𝑙)
                 else
-                    newsplit[i] = Nullable{SplitNode}()
+                    newsplit[i] = Nullable{SplitNode{T}}()
                 end
             else
-                newsplit[i] = Nullable{SplitNode}()
+                newsplit[i] = Nullable{SplitNode{T}}()
             end         
         end
     else
@@ -269,17 +269,17 @@ function getnewsplit(gradient::Vector{Vector{LossGradient}}, nodes::Vector{TreeN
                 if count(partition.mask) > 1
                     newsplit[i] = getsplitnode(factor, nodes[i].partitions[factor],  grad, λ, γ, min∂²𝑙)
                 else
-                    newsplit[i] = Nullable{SplitNode}()
+                    newsplit[i] = Nullable{SplitNode{T}}()
                 end
             else
-                newsplit[i] = Nullable{SplitNode}()
+                newsplit[i] = Nullable{SplitNode{T}}()
             end         
         end
     end
     newsplit
 end 
 
-function findbestsplit(state::TreeGrowState)
+function findbestsplit(state::TreeGrowState{T}) where {T<:AbstractFloat}
 
     nodecansplit = [n.cansplit for n in state.nodes]
     foldl(state.nodes, enumerate(state.factors)) do currsplit, nfactor
@@ -302,7 +302,7 @@ function findbestsplit(state::TreeGrowState)
     end
 end
 
-function updatestate(state::TreeGrowState, layer::TreeLayer)
+function updatestate(state::TreeGrowState{T}, layer::TreeLayer) where {T<:AbstractFloat}
     splitnodeids!(state.nodeids, layer, state.slicelength, state.singlethread)  
     factors = state.factors
     newnodes = Vector{LeafNode}(2 * length(state.nodes))
@@ -348,15 +348,15 @@ function updatestate(state::TreeGrowState, layer::TreeLayer)
     state
 end
 
-function nextlayer(state::TreeGrowState)
+function nextlayer(state::TreeGrowState{T}) where {T<:AbstractFloat}
     layernodes = findbestsplit(state)
     layer = TreeLayer(layernodes)
     updatestate(state, layer)
     Nullable{TreeLayer}(layer), state      
 end
 
-function predict(treelayer::TreeLayer, nodeids::Vector{<:Integer}, λ::Float32)
-    weights = Vector{Float32}(2 * length(treelayer.nodes))
+function predict(treelayer::TreeLayer, nodeids::Vector{<:Integer}, λ::T) where {T<:AbstractFloat}
+    weights = Vector{T}(2 * length(treelayer.nodes))
     @inbounds for (i, node) in enumerate(treelayer.nodes)
         if isa(node, SplitNode)
             weights[2 * i - 1] = getweight(node.leftgradient, λ)
@@ -366,24 +366,33 @@ function predict(treelayer::TreeLayer, nodeids::Vector{<:Integer}, λ::Float32)
             weights[2 * i] = getweight(node.gradient, λ)
         end
     end
-    (nodeid -> nodeid > 0 ? weights[nodeid] : NaN32).(nodeids)
+    (nodeid -> nodeid > 0 ? weights[nodeid] : T(NaN32)).(nodeids)
 end
 
-function predict(tree::Tree, dataframe::AbstractDataFrame)
+function predict(tree::Tree{T}, dataframe::AbstractDataFrame) where {T<:AbstractFloat}
     len = length(dataframe)
     maxnodecount = 2 ^ tree.maxdepth
     nodeids = maxnodecount <= typemax(UInt8) ? ones(UInt8, len) : (maxnodecount <= typemax(UInt16) ? ones(UInt16, len) : ones(UInt32, len))
     nodes = Vector{TreeNode}()
+    factormap = Dict{AbstractFactor, AbstractFactor}()
     for layer in tree.layers
-        nodes = [isa(n, SplitNode) ? SplitNode(map(n.factor, dataframe), n.leftpartition, n.rightpartition, n.leftgradient, n.rightgradient, n.loss) : n for n in layer.nodes]
+        for node in layer.nodes
+            if isa(node, SplitNode) && !(node.factor in keys(factormap))
+                factormap[node.factor] = map(node.factor, dataframe) |> cache
+            end
+        end
+    end
+
+    for layer in tree.layers
+        nodes = [isa(n, SplitNode) ? SplitNode{T}(factormap[n.factor], n.leftpartition, n.rightpartition, n.leftgradient, n.rightgradient, n.loss) : n for n in layer.nodes]
         splitnodeids!(nodeids, TreeLayer(nodes), tree.slicelength, tree.singlethread)
     end
     predict(TreeLayer(nodes), nodeids, tree.λ)
 end
 
-function growtree(factors::Vector{<:AbstractFactor}, ∂𝑙covariate::AbstractCovariate,
-                  ∂²𝑙covariate::AbstractCovariate, maxdepth::Integer, λ::Float32, γ::Float32,
-                  min∂²𝑙::Float32, slicelength::Integer, singlethread::Bool)
+function growtree(factors::Vector{<:AbstractFactor}, ∂𝑙covariate::AbstractCovariate{T},
+                  ∂²𝑙covariate::AbstractCovariate{T}, maxdepth::Integer, λ::T, γ::T,
+                  min∂²𝑙::T, slicelength::Integer, singlethread::Bool) where {T<:AbstractFloat}
 
     len = length(∂𝑙covariate)
     maxnodecount = 2 ^ maxdepth
@@ -392,9 +401,9 @@ function growtree(factors::Vector{<:AbstractFactor}, ∂𝑙covariate::AbstractC
     grad0 = sumgradient(nodeids, [true], intercept, [LevelPartition([true], false)], ∂𝑙covariate, ∂²𝑙covariate, slicelength, singlethread)[1][1]
     nodes0 = Vector{TreeNode}()
     push!(nodes0, LeafNode(grad0, true, Dict([f => LevelPartition(ones(Bool, length(getlevels(f))), true) for f in factors])))
-    state0 = TreeGrowState(nodeids, nodes0, factors, ∂𝑙covariate, ∂²𝑙covariate, λ, γ, min∂²𝑙, slicelength, singlethread)
+    state0 = TreeGrowState{T}(nodeids, nodes0, factors, ∂𝑙covariate, ∂²𝑙covariate, λ, γ, min∂²𝑙, slicelength, singlethread)
     layers = collect(Iterators.take(Seq(TreeLayer, state0, nextlayer), maxdepth))
-    tree = Tree(layers, λ, γ, min∂²𝑙, maxdepth, slicelength, singlethread)
+    tree = Tree{T}(layers, λ, γ, min∂²𝑙, maxdepth, slicelength, singlethread)
     pred = predict(tree.layers[end], nodeids, λ)
     tree, pred
 end

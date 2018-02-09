@@ -26,10 +26,14 @@ distance = factor(train_df["Distance"], 11:4962)
 
 factors = [filter((f -> getname(f) != "dep_delayed_15min"), train_df.factors); [deptime, distance]]
 
-@time model = xgblogit(label, factors; η = 0.3, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 2, maxdepth = 5, caching = true, singlethread = true);
+@time model = xgblogit(label, factors; η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 5, caching = true, usefloat64 = false, singlethread = true);
 
 model.pred[1:5]
 sum(model.pred)
+pred = predict(model, test_df)
+testlabel = covariate(test_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)
+auc = getauc(pred, testlabel)
+
 
 #importcsv("src\\Data\\agaricus_train.csv"; isnumeric = (colname, _) -> colname == "label")
 
@@ -51,6 +55,7 @@ df = DataFrame("src\\Data\\agaricus"; preload = true)
 #@time trees, pred = JuML.xgblogit(label, factors; η = 1, nrounds = 1, maxdepth = 1, minchildweight = 0.0, nthreads = 1);
 
 @time model = JuML.xgblogit(traindf["label"], traindf.factors; η = 1, nrounds = 1, maxdepth = 1, minchildweight = 0.0, singlethread = true, slicelength = 5000);
+
 
 
 

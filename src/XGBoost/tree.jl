@@ -1,6 +1,6 @@
-mutable struct LossGradient
-    ∂𝑙::Float32
-    ∂²𝑙::Float32
+mutable struct LossGradient{T<:AbstractFloat}
+    ∂𝑙::T
+    ∂²𝑙::T
 end
 
 mutable struct LevelPartition
@@ -16,48 +16,48 @@ mutable struct LeafNode <: TreeNode
     partitions::Dict{AbstractFactor, LevelPartition}
 end
 
-mutable struct SplitNode <: TreeNode
+mutable struct SplitNode{T<:AbstractFloat} <: TreeNode
     factor::AbstractFactor
     leftpartition::LevelPartition
     rightpartition::LevelPartition
-    leftgradient::LossGradient
-    rightgradient::LossGradient
-    loss::Real
+    leftgradient::LossGradient{T}
+    rightgradient::LossGradient{T}
+    loss::T
 end
 
 struct TreeLayer
     nodes::Vector{<:TreeNode}
 end
 
-struct Tree
+struct Tree{T<:AbstractFloat}
     layers::Vector{TreeLayer}
-    λ::Float32
-    γ::Float32
-    min∂²𝑙::Float32
+    λ::T
+    γ::T
+    min∂²𝑙::T
     maxdepth::Integer
     slicelength::Integer
     singlethread::Bool
 end
 
-mutable struct TreeGrowState
+mutable struct TreeGrowState{T<:AbstractFloat}
     nodeids::Vector{<:Integer}
     nodes::Vector{TreeNode}
     factors::Vector{<:AbstractFactor}
     ∂𝑙covariate::AbstractCovariate
     ∂²𝑙covariate::AbstractCovariate
-    λ::Float32
-    γ::Float32
-    min∂²𝑙::Float32
+    λ::T
+    γ::T
+    min∂²𝑙::T
     slicelength::Integer
     singlethread::Bool
 end
 
-struct XGModel
+struct XGModel{T<:AbstractFloat}
     trees::Vector{Tree}
-    λ::Float32
-    γ::Float32
-    η::Float32
-    minchildweight::Float32
+    λ::T
+    γ::T
+    η::T
+    minchildweight::T
     maxdepth::Integer
-    pred::Vector{Float32}
+    pred::Vector{T}
 end
