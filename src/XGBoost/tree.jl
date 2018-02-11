@@ -8,15 +8,15 @@ mutable struct LevelPartition
     inclmissing::Bool
 end
 
-abstract type TreeNode end
+abstract type TreeNode{T<:AbstractFloat} end
 
-mutable struct LeafNode <: TreeNode
-    gradient::LossGradient
+mutable struct LeafNode{T<:AbstractFloat} <: TreeNode{T}
+    gradient::LossGradient{T}
     cansplit::Bool
     partitions::Dict{AbstractFactor, LevelPartition}
 end
 
-mutable struct SplitNode{T<:AbstractFloat} <: TreeNode
+mutable struct SplitNode{T<:AbstractFloat} <: TreeNode{T}
     factor::AbstractFactor
     leftpartition::LevelPartition
     rightpartition::LevelPartition
@@ -25,12 +25,12 @@ mutable struct SplitNode{T<:AbstractFloat} <: TreeNode
     loss::T
 end
 
-struct TreeLayer
-    nodes::Vector{<:TreeNode}
+struct TreeLayer{T<:AbstractFloat}
+    nodes::Vector{<:TreeNode{T}}
 end
 
 struct Tree{T<:AbstractFloat}
-    layers::Vector{TreeLayer}
+    layers::Vector{TreeLayer{T}}
     λ::T
     γ::T
     min∂²𝑙::T
@@ -41,7 +41,7 @@ end
 
 mutable struct TreeGrowState{T<:AbstractFloat}
     nodeids::Vector{<:Integer}
-    nodes::Vector{TreeNode}
+    nodes::Vector{TreeNode{T}}
     factors::Vector{<:AbstractFactor}
     ∂𝑙covariate::AbstractCovariate
     ∂²𝑙covariate::AbstractCovariate
@@ -53,7 +53,7 @@ mutable struct TreeGrowState{T<:AbstractFloat}
 end
 
 struct XGModel{T<:AbstractFloat}
-    trees::Vector{Tree}
+    trees::Vector{Tree{T}}
     λ::T
     γ::T
     η::T

@@ -20,7 +20,7 @@ function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
                   singlethread::Bool = false)
 
     T = usefloat64 ? Float64 : Float32
-    factors = caching ? map(cache, widenfactors(factors)) : factors
+    factors = caching ? map(cache, widenfactors(filter((f -> getname(f) != getname(label)), factors))) : filter((f -> getname(f) != getname(label)), factors)
     label = caching ? cache(label) : label
     slicelength = slicelength <= 0 ? length(label) : slicelength
     λ = T(λ)
@@ -41,7 +41,7 @@ function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
         (fm, trees)
     end
     pred = sigmoid.(fm)
-    XGModel(trees, λ, γ, η, minchildweight, maxdepth, pred)
+    XGModel{T}(trees, λ, γ, η, minchildweight, maxdepth, pred)
 end
 
 function predict(model::XGModel{T}, dataframe::AbstractDataFrame) where {T<:AbstractFloat}

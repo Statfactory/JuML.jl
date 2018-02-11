@@ -62,10 +62,10 @@ deptime = factor(train_df["DepTime"], 1:2930)
 distance = factor(train_df["Distance"], 11:4962)
 ```
 
-Last thing to do before we can run XGBoost is to create a vector of factors as features. We need to exclude *dep_delayed_15min* from the train DataFrame factors and add *deptime* and *distance* factors:
+Last thing to do before we can run XGBoost is to create a vector of factors as features. We need to add *deptime* and *distance* factors to train dataframe factors (*dep_delayed_15min* will be excluded from the model features automatically):
 
 ```
-factors = [filter((f -> getname(f) != "dep_delayed_15min"), train_df.factors); [deptime, distance]]
+factors = [train_df.factors; [deptime, distance]]
 ```
 
 We are now ready to run XGBoost:

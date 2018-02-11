@@ -7,7 +7,7 @@ function getloss(∂𝑙::T, ∂²𝑙::T, λ::T, γ::T) where {T<:AbstractFloat
     -0.5 * ∂𝑙 * ∂𝑙 / (∂²𝑙 + λ) + γ
 end
 
-function getloss(node::LeafNode, λ::T, γ::T) where {T<:AbstractFloat} 
+function getloss(node::LeafNode{T}, λ::T, γ::T) where {T<:AbstractFloat} 
     ∂𝑙 = node.gradient.∂𝑙
     ∂²𝑙 = node.gradient.∂²𝑙
     getloss(∂𝑙, ∂²𝑙, λ, γ)
@@ -111,7 +111,7 @@ function splitnodeidsslice!(nodeids::Vector{<:Integer}, factors, issplitnode::Ve
     end
 end
 
-function splitnodeids!(nodeids::Vector{<:Integer}, layer::TreeLayer, slicelength::Integer, singlethread::Bool)
+function splitnodeids!(nodeids::Vector{<:Integer}, layer::TreeLayer{T}, slicelength::Integer, singlethread::Bool) where {T<:AbstractFloat}
     nodes = layer.nodes
     nodecount = length(nodes)
     len = length(nodeids)
@@ -162,7 +162,7 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
     bestloss = getloss(∂𝑙sum0 + miss∂𝑙, ∂²𝑙sum0 + miss∂²𝑙, λ, γ)
     levelcount = length(partition.mask)
     split = SplitNode{T}(factor, partition, LevelPartition(zeros(Bool, levelcount), false),
-                         LossGradient(∂𝑙sum0 + miss∂𝑙, ∂²𝑙sum0 + miss∂²𝑙), LossGradient(zero(T), zero(T)),
+                         LossGradient{T}(∂𝑙sum0 + miss∂𝑙, ∂²𝑙sum0 + miss∂²𝑙), LossGradient{T}(zero(T), zero(T)),
                          bestloss)
     
     left∂𝑙sum = gradient[gradstart].∂𝑙
@@ -173,14 +173,14 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
 
     if firstlevelwithmiss < bestloss && (left∂²𝑙sum + miss∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - left∂²𝑙sum >= min∂²𝑙)
         if firstlevelwitouthmiss < firstlevelwithmiss && (left∂²𝑙sum >= min∂²𝑙) && (∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙 >= min∂²𝑙)
-            split.leftgradient = LossGradient(left∂𝑙sum, left∂²𝑙sum)
-            split.rightgradient = LossGradient(∂𝑙sum0 - left∂𝑙sum + miss∂𝑙, ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙)
+            split.leftgradient = LossGradient{T}(left∂𝑙sum, left∂²𝑙sum)
+            split.rightgradient = LossGradient{T}(∂𝑙sum0 - left∂𝑙sum + miss∂𝑙, ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙)
             split.leftpartition = LevelPartition([j == 1 for j in 1:levelcount], false)
             split.rightpartition = LevelPartition([j == 1 ? false : partition.mask[j] for j in 1:levelcount], partition.inclmissing)
             split.loss = firstlevelwitouthmiss
         else
-            split.leftgradient = LossGradient(left∂𝑙sum + miss∂𝑙, left∂²𝑙sum + miss∂²𝑙)
-            split.rightgradient = LossGradient(∂𝑙sum0 - left∂𝑙sum, ∂²𝑙sum0 - left∂²𝑙sum)
+            split.leftgradient = LossGradient{T}(left∂𝑙sum + miss∂𝑙, left∂²𝑙sum + miss∂²𝑙)
+            split.rightgradient = LossGradient{T}(∂𝑙sum0 - left∂𝑙sum, ∂²𝑙sum0 - left∂²𝑙sum)
             split.leftpartition = LevelPartition([j == 1 for j in 1:levelcount], partition.inclmissing)
             split.rightpartition = LevelPartition([j == 1 ? false : partition.mask[j] for j in 1:levelcount], partition.inclmissing)
             split.loss = firstlevelwithmiss
@@ -206,14 +206,14 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
         if isord
             if leftwithmisstotal < split.loss && (left∂²𝑙sum + miss∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - left∂²𝑙sum >= min∂²𝑙)
                 if leftwithoutmisstotal < leftwithmisstotal && (left∂²𝑙sum >= min∂²𝑙) && (∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙 >= min∂²𝑙)
-                    split.leftgradient = LossGradient(left∂𝑙sum, left∂²𝑙sum)
-                    split.rightgradient = LossGradient(∂𝑙sum0 - left∂𝑙sum + miss∂𝑙, ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙)
+                    split.leftgradient = LossGradient{T}(left∂𝑙sum, left∂²𝑙sum)
+                    split.rightgradient = LossGradient{T}(∂𝑙sum0 - left∂𝑙sum + miss∂𝑙, ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙)
                     split.leftpartition = LevelPartition([(j <= i) ? partition.mask[j] : false for j in 1:levelcount], false)
                     split.rightpartition = LevelPartition([j <= i ? false : partition.mask[j] for j in 1:levelcount], partition.inclmissing)
                     split.loss = leftwithoutmisstotal
                 else
-                    split.leftgradient = LossGradient(left∂𝑙sum + miss∂𝑙, left∂²𝑙sum + miss∂²𝑙)
-                    split.rightgradient = LossGradient(∂𝑙sum0 - left∂𝑙sum, ∂²𝑙sum0 - left∂²𝑙sum)
+                    split.leftgradient = LossGradient{T}(left∂𝑙sum + miss∂𝑙, left∂²𝑙sum + miss∂²𝑙)
+                    split.rightgradient = LossGradient{T}(∂𝑙sum0 - left∂𝑙sum, ∂²𝑙sum0 - left∂²𝑙sum)
                     split.leftpartition = LevelPartition([(j <= i) ? partition.mask[j] : false for j in 1:levelcount], partition.inclmissing)
                     split.rightpartition = LevelPartition([j <= i ? false : partition.mask[j] for j in 1:levelcount], partition.inclmissing)
                     split.loss = leftwithmisstotal
@@ -222,14 +222,14 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
         else
             if singlelevelwithmisstotal < split.loss && (∂²𝑙 + miss∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - ∂²𝑙 >= min∂²𝑙)
                 if singlelevelwitouthmisstotal < singlelevelwithmisstotal && (∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - ∂²𝑙 + miss∂²𝑙 >= min∂²𝑙)
-                    split.leftgradient = LossGradient(∂𝑙, ∂²𝑙)
-                    split.rightgradient = LossGradient(∂𝑙sum0 - ∂𝑙 + miss∂𝑙, ∂²𝑙sum0 - ∂²𝑙 + miss∂²𝑙)
+                    split.leftgradient = LossGradient{T}(∂𝑙, ∂²𝑙)
+                    split.rightgradient = LossGradient{T}(∂𝑙sum0 - ∂𝑙 + miss∂𝑙, ∂²𝑙sum0 - ∂²𝑙 + miss∂²𝑙)
                     split.leftpartition = LevelPartition([j == i for j in 1:levelcount], false)
                     split.rightpartition = LevelPartition([j == i ? false : partition.mask[j] for j in 1:levelcount], partition.inclmissing)
                     split.loss = singlelevelwitouthmisstotal
                 else
-                    split.leftgradient = LossGradient(∂𝑙 + miss∂𝑙, ∂²𝑙 + miss∂²𝑙)
-                    split.rightgradient = LossGradient(∂𝑙sum0 - ∂𝑙, ∂²𝑙sum0 - ∂²𝑙)
+                    split.leftgradient = LossGradient{T}(∂𝑙 + miss∂𝑙, ∂²𝑙 + miss∂²𝑙)
+                    split.rightgradient = LossGradient{T}(∂𝑙sum0 - ∂𝑙, ∂²𝑙sum0 - ∂²𝑙)
                     split.leftpartition = LevelPartition([j == i for j in 1:levelcount], partition.inclmissing)
                     split.rightpartition = LevelPartition([j == i ? false : partition.mask[j] for j in 1:levelcount], partition.inclmissing)
                     split.loss = singlelevelwithmisstotal
@@ -244,7 +244,7 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
     end
 end
 
-function getnewsplit(gradient::Vector{Vector{LossGradient{T}}}, nodes::Vector{TreeNode}, factor::AbstractFactor,
+function getnewsplit(gradient::Vector{Vector{LossGradient{T}}}, nodes::Vector{TreeNode{T}}, factor::AbstractFactor,
                      λ::T, γ::T, min∂²𝑙::T, singlethread::Bool) where {T<:AbstractFloat}
     newsplit = Vector{Nullable{SplitNode{T}}}(length(gradient))
     if !singlethread
@@ -290,7 +290,7 @@ function findbestsplit(state::TreeGrowState{T}) where {T<:AbstractFloat}
         
         newsplit = getnewsplit(gradient, state.nodes, factor, state.λ, state.γ, state.min∂²𝑙, state.singlethread)
 
-        res = Vector{TreeNode}(length(newsplit))
+        res = Vector{TreeNode{T}}(length(newsplit))
         for i in 1:length(newsplit)
              if !isnull(newsplit[i]) && get(newsplit[i]).loss < getloss(currsplit[i], state.λ, state.γ) 
                 res[i] = get(newsplit[i])  
@@ -302,10 +302,10 @@ function findbestsplit(state::TreeGrowState{T}) where {T<:AbstractFloat}
     end
 end
 
-function updatestate(state::TreeGrowState{T}, layer::TreeLayer) where {T<:AbstractFloat}
+function updatestate(state::TreeGrowState{T}, layer::TreeLayer{T}) where {T<:AbstractFloat}
     splitnodeids!(state.nodeids, layer, state.slicelength, state.singlethread)  
     factors = state.factors
-    newnodes = Vector{LeafNode}(2 * length(state.nodes))
+    newnodes = Vector{LeafNode{T}}(2 * length(state.nodes))
     @inbounds for (i, n) in enumerate(layer.nodes)
         if isa(n, SplitNode)
             leftpartitions = map(state.nodes[i].partitions) do x
@@ -324,15 +324,15 @@ function updatestate(state::TreeGrowState{T}, layer::TreeLayer) where {T<:Abstra
                     x
                 end
             end
-            newnodes[2 * i - 1] = LeafNode(n.leftgradient,
-                                           n.leftgradient.∂²𝑙 >= state.min∂²𝑙,
-                                           leftpartitions)
-            newnodes[2 * i] = LeafNode(n.rightgradient,
-                                       n.rightgradient.∂²𝑙 >= state.min∂²𝑙,
-                                       rightpartitions)
+            newnodes[2 * i - 1] = LeafNode{T}(n.leftgradient,
+                                              n.leftgradient.∂²𝑙 >= state.min∂²𝑙,
+                                              leftpartitions)
+            newnodes[2 * i] = LeafNode{T}(n.rightgradient,
+                                          n.rightgradient.∂²𝑙 >= state.min∂²𝑙,
+                                          rightpartitions)
         else
-            newnodes[2 * i - 1] = LeafNode(n.gradient, false, n.partitions)
-            newnodes[2 * i] = LeafNode(n.gradient, false, n.partitions)
+            newnodes[2 * i - 1] = LeafNode{T}(n.gradient, false, n.partitions)
+            newnodes[2 * i] = LeafNode{T}(n.gradient, false, n.partitions)
         end
     end
     activefactors = filter(factors) do f
@@ -350,12 +350,12 @@ end
 
 function nextlayer(state::TreeGrowState{T}) where {T<:AbstractFloat}
     layernodes = findbestsplit(state)
-    layer = TreeLayer(layernodes)
+    layer = TreeLayer{T}(layernodes)
     updatestate(state, layer)
-    Nullable{TreeLayer}(layer), state      
+    Nullable{TreeLayer{T}}(layer), state      
 end
 
-function predict(treelayer::TreeLayer, nodeids::Vector{<:Integer}, λ::T) where {T<:AbstractFloat}
+function predict(treelayer::TreeLayer{T}, nodeids::Vector{<:Integer}, λ::T) where {T<:AbstractFloat}
     weights = Vector{T}(2 * length(treelayer.nodes))
     @inbounds for (i, node) in enumerate(treelayer.nodes)
         if isa(node, SplitNode)
@@ -373,7 +373,7 @@ function predict(tree::Tree{T}, dataframe::AbstractDataFrame) where {T<:Abstract
     len = length(dataframe)
     maxnodecount = 2 ^ tree.maxdepth
     nodeids = maxnodecount <= typemax(UInt8) ? ones(UInt8, len) : (maxnodecount <= typemax(UInt16) ? ones(UInt16, len) : ones(UInt32, len))
-    nodes = Vector{TreeNode}()
+    nodes = Vector{TreeNode{T}}()
     factormap = Dict{AbstractFactor, AbstractFactor}()
     for layer in tree.layers
         for node in layer.nodes
@@ -385,9 +385,9 @@ function predict(tree::Tree{T}, dataframe::AbstractDataFrame) where {T<:Abstract
 
     for layer in tree.layers
         nodes = [isa(n, SplitNode) ? SplitNode{T}(factormap[n.factor], n.leftpartition, n.rightpartition, n.leftgradient, n.rightgradient, n.loss) : n for n in layer.nodes]
-        splitnodeids!(nodeids, TreeLayer(nodes), tree.slicelength, tree.singlethread)
+        splitnodeids!(nodeids, TreeLayer{T}(nodes), tree.slicelength, tree.singlethread)
     end
-    predict(TreeLayer(nodes), nodeids, tree.λ)
+    predict(TreeLayer{T}(nodes), nodeids, tree.λ)
 end
 
 function growtree(factors::Vector{<:AbstractFactor}, ∂𝑙covariate::AbstractCovariate{T},
@@ -399,10 +399,10 @@ function growtree(factors::Vector{<:AbstractFactor}, ∂𝑙covariate::AbstractC
     nodeids = maxnodecount <= typemax(UInt8) ? ones(UInt8, len) : (maxnodecount <= typemax(UInt16) ? ones(UInt16, len) : ones(UInt32, len))
     intercept = ConstFactor(len)
     grad0 = sumgradient(nodeids, [true], intercept, [LevelPartition([true], false)], ∂𝑙covariate, ∂²𝑙covariate, slicelength, singlethread)[1][1]
-    nodes0 = Vector{TreeNode}()
-    push!(nodes0, LeafNode(grad0, true, Dict([f => LevelPartition(ones(Bool, length(getlevels(f))), true) for f in factors])))
+    nodes0 = Vector{TreeNode{T}}()
+    push!(nodes0, LeafNode{T}(grad0, true, Dict([f => LevelPartition(ones(Bool, length(getlevels(f))), true) for f in factors])))
     state0 = TreeGrowState{T}(nodeids, nodes0, factors, ∂𝑙covariate, ∂²𝑙covariate, λ, γ, min∂²𝑙, slicelength, singlethread)
-    layers = collect(Iterators.take(Seq(TreeLayer, state0, nextlayer), maxdepth))
+    layers = collect(Iterators.take(Seq(TreeLayer{T}, state0, nextlayer), maxdepth))
     tree = Tree{T}(layers, λ, γ, min∂²𝑙, maxdepth, slicelength, singlethread)
     pred = predict(tree.layers[end], nodeids, λ)
     tree, pred
