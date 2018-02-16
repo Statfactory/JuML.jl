@@ -18,7 +18,6 @@ summary(distance)
 summary(deptime)
 summary(dep_delayed_15min)
 
-
 label = covariate(train_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)
 
 deptime = factor(train_df["DepTime"], 1:2930)
@@ -26,13 +25,36 @@ distance = factor(train_df["Distance"], 11:4962)
 
 factors = [train_df.factors; [deptime, distance]]
 
-@time model = xgblogit(label, factors; η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 5, caching = true, usefloat64 = true, singlethread = true);
+@time model = xgblogit(label, factors; η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 10, caching = true, usefloat64 = false, singlethread = true);
 
 model.pred[1:5]
-sum(model.pred)
-pred = predict(model, test_df)
+@time pred = predict(model, test_df)
+pred[1:5]
 testlabel = covariate(test_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)
 auc = getauc(pred, testlabel)
+
+
+len = 10000000
+nodeslice = ones(UInt8, len)
+gsum = [zeros(Float32, 100) for i in 1:100]
+hsum = [zeros(Float32, 100) for i in 1:100]
+nodecansplit = ones(Bool, 100)
+factorslice = ones(UInt8, len)
+gslice = ones(Float32, len)
+hslice = ones(Float32, len)
+function sumgrad(len::Int64, nodeslice::Vector{UInt8}, nodecansplit::Vector{Bool}, factorslice::Vector{UInt8}, 
+                 gsum::Vector{Vector{Float32}}, hsum::Vector{Vector{Float32}}, gslice::Vector{Float32}, hslice::Vector{Float32})
+    @inbounds for i in 1:len
+        nodeid = nodeslice[i]
+        if nodecansplit[nodeid]
+            levelindex = factorslice[i] + 1
+            gsum[nodeid][levelindex] = gsum[nodeid][levelindex] + gslice[i]
+            hsum[nodeid][levelindex] = hsum[nodeid][levelindex] + hslice[i]
+        end
+    end
+end
+
+@time res = sumgrad(len, nodeslice, nodecansplit, factorslice, gsum, hsum, gslice, hslice)
 
 
 #importcsv("src\\Data\\agaricus_train.csv"; isnumeric = (colname, _) -> colname == "label")

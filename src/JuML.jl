@@ -19,6 +19,7 @@ export importcsv,
 include("const.jl")
 include("DataStructures/seq.jl")
 include("DataStructures/list.jl")
+include("DataStructures/tree.jl")
 include("util.jl")
 include("DataImport/dataimport.jl")
 include("DataFrame/dataframe.jl")

@@ -29,7 +29,7 @@ struct TreeLayer{T<:AbstractFloat}
     nodes::Vector{<:TreeNode{T}}
 end
 
-struct Tree{T<:AbstractFloat}
+struct XGTree{T<:AbstractFloat}
     layers::Vector{TreeLayer{T}}
     λ::T
     γ::T
@@ -53,7 +53,7 @@ mutable struct TreeGrowState{T<:AbstractFloat}
 end
 
 struct XGModel{T<:AbstractFloat}
-    trees::Vector{Tree{T}}
+    trees::Vector{XGTree{T}}
     λ::T
     γ::T
     η::T

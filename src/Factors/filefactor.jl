@@ -19,5 +19,6 @@ function slice(factor::FileFactor{T}, fromobs::Integer, toobs::Integer, slicelen
 end
 
 function Base.map(factor::FileFactor, dataframe::AbstractDataFrame)
-    PermuteFactor(factor, dataframe[getname(factor)])
+    dataframe[getname(factor)]
+    #PermuteFactor(factor, dataframe[getname(factor)])
 end

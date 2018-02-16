@@ -30,7 +30,7 @@ function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
     μ = T(0.5f0)
     f0 = Vector{T}(length(label))
     fill!(f0, T(logitraw(μ)))
-    fm, trees = fold((f0, Vector{Tree}()), Seq(1:nrounds)) do x, m
+    fm, trees = fold((f0, Vector{XGTree}()), Seq(1:nrounds)) do x, m
         fm, trees = x
         ŷ = Covariate(sigmoid.(fm))
         ∂𝑙 = Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) |> cache
