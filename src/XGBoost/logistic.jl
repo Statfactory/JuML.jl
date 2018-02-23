@@ -37,8 +37,8 @@ function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
     fm, trees = fold((f0, Vector{XGTree}()), Seq(1:nrounds)) do x, m
         fm, trees = x
         ŷ = Covariate(sigmoid.(fm)) 
-        ∂𝑙 = length(selector) == 0 ? Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) |> cache : IfElseCovariate(get(selector), Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙), zerocov) |> cache
-        ∂²𝑙 = length(selector) == 0 ? TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙) |> cache : IfElseCovariate(get(selector), TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙), zerocov) |> cache
+        ∂𝑙 = length(selector) == 0 ? Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) |> cache : IfElseCovariate(selector, Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙), zerocov) |> cache
+        ∂²𝑙 = length(selector) == 0 ? TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙) |> cache : IfElseCovariate(selector, TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙), zerocov) |> cache
         tree, predraw = growtree(factors, ∂𝑙, ∂²𝑙, maxdepth, λ, γ, minchildweight, slicelength, singlethread)
         fm .= muladd.(η, predraw, fm)
         push!(trees, tree)

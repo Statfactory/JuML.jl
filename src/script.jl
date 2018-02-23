@@ -28,7 +28,7 @@ nfolds = 5
 cvfolds = JuML.getnfolds(nfolds, false, length(label))
 selector = BoolVariate("", cvfolds .!= UInt8(1) )
 
-@time model = xgblogit(label, factors; selector = Nullable(selector), η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 5, caching = true, usefloat64 = false, singlethread = true);
+@time model = xgblogit(label, factors; selector = selector, η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 5, caching = true, usefloat64 = false, singlethread = true);
 
 @time cvmodel = JuML.cvxgblogit(label, factors, 5; η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 5, caching = true, usefloat64 = false, singlethread = true, slicelength = 10000);
 
