@@ -1,9 +1,11 @@
 function logit∂𝑙(y::AbstractFloat, ŷ::AbstractFloat)
-    ŷ - y
+    res = ŷ - y
+    isnan(res) ? 0.0 : res
 end
 
 function logit∂²𝑙(ŷ::T) where {T<:AbstractFloat}
-    max(ŷ * (one(T) - ŷ), eps(T))
+    res = max(ŷ * (one(T) - ŷ), eps(T))
+    isnan(res) ? 0.0 : res
 end
 
 function logitraw(p::T) where {T<:AbstractFloat}
@@ -15,6 +17,7 @@ function sigmoid(x::T) where {T<:AbstractFloat}
 end
 
 function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
+                  selector::AbstractBoolVariate = BoolVariate("", BitArray{1}(0)),
                   η::Real = 0.3, λ::Real = 1.0, γ::Real = 0.0, maxdepth::Integer = 6, nrounds::Integer = 2,
                   minchildweight::Real = 1.0, caching::Bool = true, slicelength::Integer = 0, usefloat64::Bool = false,
                   singlethread::Bool = false)
@@ -30,11 +33,12 @@ function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
     μ = T(0.5f0)
     f0 = Vector{T}(length(label))
     fill!(f0, T(logitraw(μ)))
+    zerocov = ConstCovariate(zero(T), length(selector))
     fm, trees = fold((f0, Vector{XGTree}()), Seq(1:nrounds)) do x, m
         fm, trees = x
-        ŷ = Covariate(sigmoid.(fm))
-        ∂𝑙 = Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) |> cache
-        ∂²𝑙 = TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙) |> cache
+        ŷ = Covariate(sigmoid.(fm)) 
+        ∂𝑙 = length(selector) == 0 ? Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) |> cache : IfElseCovariate(get(selector), Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙), zerocov) |> cache
+        ∂²𝑙 = length(selector) == 0 ? TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙) |> cache : IfElseCovariate(get(selector), TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙), zerocov) |> cache
         tree, predraw = growtree(factors, ∂𝑙, ∂²𝑙, maxdepth, λ, γ, minchildweight, slicelength, singlethread)
         fm .= muladd.(η, predraw, fm)
         push!(trees, tree)
@@ -42,6 +46,40 @@ function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
     end
     pred = sigmoid.(fm)
     XGModel{T}(trees, λ, γ, η, minchildweight, maxdepth, pred)
+end
+
+function cvxgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor}, nfolds::Integer;
+                    η::Real = 0.3, λ::Real = 1.0, γ::Real = 0.0, maxdepth::Integer = 6, nrounds::Integer = 2,
+                    minchildweight::Real = 1.0, caching::Bool = true, slicelength::Integer = 0, usefloat64::Bool = false,
+                    singlethread::Bool = false)
+
+    T = usefloat64 ? Float64 : Float32
+    factors = caching ? map(cache, widenfactors(filter((f -> getname(f) != getname(label)), factors))) : filter((f -> getname(f) != getname(label)), factors)
+    label = caching ? cache(label) : label
+    slicelength = slicelength <= 0 ? length(label) : slicelength
+    λ = T(λ)
+    γ = T(γ)
+    η = T(η)
+    minchildweight = T(minchildweight)
+    μ = T(0.5f0)
+    f0 = [Vector{T}(length(label)) for i in 1:nfolds]
+    for i in 1:nfolds
+        fill!(f0[i], T(logitraw(μ)))
+    end
+    cvfolds = getnfolds(nfolds, false, length(label))
+    fm, trees, cvpred = fold((f0, Vector{Vector{XGTree}}(), Vector{T}()), Seq(1:nrounds)) do x, m
+        fm, trees, _ = x
+        ŷ = [Covariate(sigmoid.(fm[i])) for i in 1:nfolds]
+        ∂𝑙 = [(Trans2Covariate(T, "∂𝑙", label, ŷ[i], logit∂𝑙) |> cache) for i in 1:nfolds]
+        ∂²𝑙 = [(TransCovariate(T, "∂²𝑙", ŷ[i], logit∂²𝑙) |> cache) for i in 1:nfolds]
+        tree, predraw, cvpred = cvgrowtree(nfolds, cvfolds, factors, ∂𝑙, ∂²𝑙, maxdepth, λ, γ, minchildweight, slicelength, singlethread)
+        foreach(1:nfolds) do i
+            fm[i] .= muladd.(η, predraw[i], fm[i])
+        end
+        push!(trees, tree)
+        (fm, trees, cvpred)
+    end
+    CVXGModel{T}(trees, λ, γ, η, minchildweight, maxdepth, cvpred)
 end
 
 function predict(model::XGModel{T}, dataframe::AbstractDataFrame) where {T<:AbstractFloat}

@@ -27,7 +27,7 @@ function getloss(tree::ConsTree{TreeNode{T}}, λ::T, γ::T) where {T<:AbstractFl
 end
 
 function sumgradientslice!(∂𝑙sum0, ∂²𝑙sum0, nodeids::Vector{<:Integer}, nodecansplit::Vector{Bool}, factor::AbstractFactor,
-                           ∂𝑙covariate::AbstractCovariate, ∂²𝑙covariate::AbstractCovariate, fromobs::Integer, toobs::Integer, slicelength::Integer)
+                           ∂𝑙covariate::AbstractCovariate{T}, ∂²𝑙covariate::AbstractCovariate{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:AbstractFloat}
 
     nodeslices = slice(nodeids, fromobs, toobs, slicelength)
     factorslices = slice(factor, fromobs, toobs, slicelength)
@@ -65,8 +65,8 @@ function sumgradient(nodeids::Vector{<:Integer}, nodecansplit::Vector{Bool}, fac
     if nthreads > 1
         Threads.@threads for i in 1:nthreads
             sumgradientslice!(∂𝑙sum[i], ∂²𝑙sum[i], nodeids, nodecansplit, factor,
-                            ∂𝑙covariate, ∂²𝑙covariate, threadspace[i],
-                            i == nthreads ? threadspace[i + 1] : threadspace[i + 1] - 1, slicelength)
+                            ∂𝑙covariate, ∂²𝑙covariate, (i == 1 ? threadspace[i] : threadspace[i] + 1),
+                            threadspace[i + 1], slicelength)
         end
         ∂𝑙sum = reduce(+, ∂𝑙sum)
         ∂²𝑙sum = reduce(+, ∂²𝑙sum)
@@ -130,8 +130,8 @@ function splitnodeids!(nodeids::Vector{<:Integer}, layer::TreeLayer{T}, slicelen
         threadspace = map((x -> Int64(floor(x))), LinSpace(fromobs, toobs, nthreads + 1))
         Threads.@threads for j in 1:nthreads
              splitnodeidsslice!(nodeids, factors, issplitnode, leftpartitions, factorindex,
-                                threadspace[j],
-                                j == nthreads ? threadspace[j + 1] : (threadspace[j + 1] - 1), slicelength)
+                                j == 1 ? threadspace[j] : threadspace[j] + 1,
+                                threadspace[j + 1], slicelength)
         end
     else
         splitnodeidsslice!(nodeids, factors, issplitnode, leftpartitions, factorindex,
@@ -350,7 +350,7 @@ function findbestsplit(state::TreeGrowState{T}) where {T<:AbstractFloat}
         newsplit = getnewsplit(gradient, state.nodes, factor, state.λ, state.γ, state.min∂²𝑙, state.singlethread)
 
         res = Vector{TreeNode{T}}(length(newsplit))
-        for i in 1:length(newsplit)
+        @inbounds for i in 1:length(newsplit)
              if !isnull(newsplit[i]) &&
                 (isa(currsplit[i], LeafNode{T}) || get(newsplit[i]).loss < getloss(currsplit[i], state.λ, state.γ))
                 res[i] = get(newsplit[i]) 

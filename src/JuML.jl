@@ -3,6 +3,9 @@ module JuML
 export importcsv,
        Seq,
        DataFrame,
+       Factor,
+       Covariate,
+       BoolVariate,
        factor,
        covariate,
        getname,
@@ -42,6 +45,7 @@ include("Covariates/cachedcovariate.jl")
 include("Covariates/transcovariate.jl")
 include("Covariates/trans2covariate.jl")
 include("Covariates/parsefactorcovariate.jl")
+include("Covariates/ifelsecovariate.jl")
 
 include("BoolVariates/boolvariate.jl")
 include("BoolVariates/transboolvariate.jl")

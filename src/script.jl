@@ -24,37 +24,28 @@ deptime = factor(train_df["DepTime"], 1:2930)
 distance = factor(train_df["Distance"], 11:4962)
 
 factors = [train_df.factors; [deptime, distance]]
+nfolds = 5
+cvfolds = JuML.getnfolds(nfolds, false, length(label))
+selector = BoolVariate("", cvfolds .!= UInt8(1) )
 
-@time model = xgblogit(label, factors; η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 10, caching = true, usefloat64 = false, singlethread = true);
+@time model = xgblogit(label, factors; selector = Nullable(selector), η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 5, caching = true, usefloat64 = false, singlethread = true);
 
+@time cvmodel = JuML.cvxgblogit(label, factors, 5; η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 5, caching = true, usefloat64 = false, singlethread = true, slicelength = 10000);
+
+res = predict(cvmodel.trees[1][1], train_df)
+JuML.sigmoid.(res[1:5])
+JuML.sigmoid.(cvmodel.cvpred[1:5])
 model.pred[1:5]
 @time pred = predict(model, test_df)
 pred[1:5]
 testlabel = covariate(test_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)
 auc = getauc(pred, testlabel)
 
+x = [1.0, 2.0, 3.0]
+y = x .== 1.0
+z = view(y, 1:2)
 
-len = 10000000
-nodeslice = ones(UInt8, len)
-gsum = [zeros(Float32, 100) for i in 1:100]
-hsum = [zeros(Float32, 100) for i in 1:100]
-nodecansplit = ones(Bool, 100)
-factorslice = ones(UInt8, len)
-gslice = ones(Float32, len)
-hslice = ones(Float32, len)
-function sumgrad(len::Int64, nodeslice::Vector{UInt8}, nodecansplit::Vector{Bool}, factorslice::Vector{UInt8}, 
-                 gsum::Vector{Vector{Float32}}, hsum::Vector{Vector{Float32}}, gslice::Vector{Float32}, hslice::Vector{Float32})
-    @inbounds for i in 1:len
-        nodeid = nodeslice[i]
-        if nodecansplit[nodeid]
-            levelindex = factorslice[i] + 1
-            gsum[nodeid][levelindex] = gsum[nodeid][levelindex] + gslice[i]
-            hsum[nodeid][levelindex] = hsum[nodeid][levelindex] + hslice[i]
-        end
-    end
-end
 
-@time res = sumgrad(len, nodeslice, nodecansplit, factorslice, gsum, hsum, gslice, hslice)
 
 
 #importcsv("src\\Data\\agaricus_train.csv"; isnumeric = (colname, _) -> colname == "label")
@@ -77,8 +68,6 @@ df = DataFrame("src\\Data\\agaricus"; preload = true)
 #@time trees, pred = JuML.xgblogit(label, factors; η = 1, nrounds = 1, maxdepth = 1, minchildweight = 0.0, nthreads = 1);
 
 @time model = JuML.xgblogit(traindf["label"], traindf.factors; η = 1, nrounds = 1, maxdepth = 1, minchildweight = 0.0, singlethread = true, slicelength = 5000);
-
-
 
 
 R:
@@ -104,4 +93,6 @@ dxgb_train <- xgb.DMatrix(data = X_train, label = ifelse(d_train$dep_delayed_15m
 system.time(md <- xgb.train(data = dxgb_train, objective = "binary:logistic", nround = 1, max_depth = 2, eta = 1, tree_method='exact'))
 preds = predict(md, dxgb_train)
 xgb.plot.tree(model = md, feature_names = colnames(dxgb_train))
+
+system.time(md <- xgb.cv(data = dxgb_train, objective = "binary:logistic", nround = 1, max_depth = 10, eta = 1, tree_method='exact', nfold = 5, metrics= list("auc")))
 

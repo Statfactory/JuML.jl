@@ -202,6 +202,36 @@ function zip4(xs::ConsSeq{T}, ys::ConsSeq{S}, zs::ConsSeq{U}, vs::Seq{V}) where 
             )
 end
 
+function zip5(x1s::Seq{T1}, x2s::Seq{T2}, x3s::Seq{T3}, x4s::Seq{T4}, x5s::Seq{T5}) where {T1} where {T2} where {T3} where {T4} where {T5}
+    EmptySeq{Tuple{T1, T2, T3, T4, T5}}()
+end
+
+function zip5(x1s::ConsSeq{T1}, x2s::ConsSeq{T2}, x3s::ConsSeq{T3}, x4s::ConsSeq{T4}, x5s::ConsSeq{T5}) where {T1} where {T2} where {T3} where {T4} where {T5}
+    return ConsSeq{Tuple{T1, T2, T3, T4, T5}}(() ->
+            begin
+                statex1, nextx1 = x1s.genfun()
+                statex2, nextx2 = x2s.genfun()
+                statex3, nextx3 = x3s.genfun()
+                statex4, nextx4 = x4s.genfun()
+                statex5, nextx5 = x5s.genfun()
+                (statex1, statex2, statex3, statex4, statex5), state -> 
+                    begin
+                        _statex1, _statex2, _statex3, _statex4, _statex5 = state
+                        x1, newstatex1 = nextx1(_statex1) 
+                        x2, newstatex2 = nextx2(_statex2) 
+                        x3, newstatex3 = nextx3(_statex3) 
+                        x4, newstatex4 = nextx4(_statex4)  
+                        x5, newstatex5 = nextx5(_statex5) 
+                        if isnull(x1) || isnull(x2) || isnull(x3) || isnull(x4) || isnull(x5)
+                            Nullable{Tuple{T1, T2, T3, T4, T5}}(), (newstatex1, newstatex2, newstatex3, newstatex4, newstatex5)
+                        else
+                            Nullable{Tuple{T1, T2, T3, T4, T5}}((get(x1), get(x2), get(x3), get(x4), get(x5))), (newstatex1, newstatex2, newstatex3, newstatex4, newstatex5)
+                        end
+                    end
+            end
+            )
+end
+
  function zipn(xs::Vector{<:Seq{T}}) where {T}
      EmptySeq{Vector{T}}()
  end

@@ -20,12 +20,8 @@ function slice(factor::ConstFactor, fromobs::Integer, toobs::Integer, slicelengt
         toobs = min(toobs, length(factor))
         slicelength = verifyslicelength(fromobs, toobs, slicelength) 
         buffer = ones(UInt8, slicelength) 
-        map(Seq(Tuple{Int64, Int64}, (fromobs, toobs, slicelength), nextslice), AbstractVector{UInt8}) do rng
-            if rng[2] - rng[1] + 1 == slicelength
-                buffer
-            else
-                view(buffer, 1:(rng[2] - rng[1] + 1))
-            end
+        map(Seq(Tuple{Int64, Int64}, (fromobs, toobs, slicelength), nextslice), SubArray{UInt8,1,Array{UInt8,1},Tuple{UnitRange{Int64}},true}) do rng
+            view(buffer, 1:(rng[2] - rng[1] + 1))
         end
     end
 end

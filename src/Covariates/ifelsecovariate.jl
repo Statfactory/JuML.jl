@@ -11,6 +11,10 @@ function IfElseCovariate(name::String, ifboolvar::AbstractBoolVariate, truecovar
     U = promote_type(S, T)
     IfElseCovariate{S, T, U}(name, ifboolvar, truecovariate, falsecovariate)
 end
+
+function IfElseCovariate(ifboolvar::AbstractBoolVariate, truecovariate::AbstractCovariate{S}, falsecovariate::AbstractCovariate{T}) where {S<:AbstractFloat} where {T<:AbstractFloat} 
+    IfElseCovariate("", ifboolvar, truecovariate, falsecovariate)
+end
  
 function slice(cov::IfElseCovariate{S, T, U}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {S<:AbstractFloat} where {T<:AbstractFloat} where {U<:AbstractFloat}
     ifboolvar = cov.ifboolvar
