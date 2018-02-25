@@ -139,7 +139,7 @@ function getauc(pred::Vector{T}, label::AbstractCovariate{S}; selector::BitArray
     cumlabel = cumlabel[isstep]
     cumcount = cumcount[isstep]
     tpr = (cumlabel ./ sumlabel)
-    fpr = ((cumcount .- cumlabel) ./ (cumcount .- cumlabel .+ length(label) .- cumcount .- (sumlabel .- cumlabel)))
+    fpr = ((cumcount .- cumlabel) ./ (length(label) .- sumlabel))
     len = length(tpr)
     fpr1 = view(fpr, 1:(len-1))
     fpr2 = view(fpr, 2:len)
