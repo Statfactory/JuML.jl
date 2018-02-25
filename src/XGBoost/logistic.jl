@@ -1,11 +1,11 @@
 function logit∂𝑙(y::AbstractFloat, ŷ::AbstractFloat)
     res = ŷ - y
-    isnan(res) ? 0.0 : res
+    isnan(res) ? zero(res) : res
 end
 
 function logit∂²𝑙(ŷ::T) where {T<:AbstractFloat}
     res = max(ŷ * (one(T) - ŷ), eps(T))
-    isnan(res) ? 0.0 : res
+    isnan(res) ? zero(T) : res
 end
 
 function logitraw(p::T) where {T<:AbstractFloat}
@@ -14,6 +14,17 @@ end
 
 function sigmoid(x::T) where {T<:AbstractFloat}
     one(T) / (one(T) + exp(-x))
+end
+
+function logloss(y::AbstractFloat, ŷ::AbstractFloat)
+    ϵ = eps(ŷ)
+    if ŷ < ϵ
+        -y * log(ϵ) - (one(y) - y)  * log(one(ϵ) - ϵ)
+    elseif one(ŷ) - ŷ < ϵ
+        -y * log(one(ϵ) - ϵ) - (one(y) - y)  * log(ϵ)
+    else
+        -y * log(ŷ) - (one(y) - y) * log(one(ŷ) - ŷ)
+    end
 end
 
 function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
@@ -49,37 +60,53 @@ function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
 end
 
 function cvxgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor}, nfolds::Integer;
+                    aucmetric::Bool = true, loglossmetric::Bool = true, trainmetric::Bool = false,
                     η::Real = 0.3, λ::Real = 1.0, γ::Real = 0.0, maxdepth::Integer = 6, nrounds::Integer = 2,
                     minchildweight::Real = 1.0, caching::Bool = true, slicelength::Integer = 0, usefloat64::Bool = false,
                     singlethread::Bool = false)
 
-    T = usefloat64 ? Float64 : Float32
-    factors = caching ? map(cache, widenfactors(filter((f -> getname(f) != getname(label)), factors))) : filter((f -> getname(f) != getname(label)), factors)
-    label = caching ? cache(label) : label
-    slicelength = slicelength <= 0 ? length(label) : slicelength
-    λ = T(λ)
-    γ = T(γ)
-    η = T(η)
-    minchildweight = T(minchildweight)
-    μ = T(0.5f0)
-    f0 = [Vector{T}(length(label)) for i in 1:nfolds]
-    for i in 1:nfolds
-        fill!(f0[i], T(logitraw(μ)))
-    end
     cvfolds = getnfolds(nfolds, false, length(label))
-    fm, trees, cvpred = fold((f0, Vector{Vector{XGTree}}(), Vector{T}()), Seq(1:nrounds)) do x, m
-        fm, trees, _ = x
-        ŷ = [Covariate(sigmoid.(fm[i])) for i in 1:nfolds]
-        ∂𝑙 = [(Trans2Covariate(T, "∂𝑙", label, ŷ[i], logit∂𝑙) |> cache) for i in 1:nfolds]
-        ∂²𝑙 = [(TransCovariate(T, "∂²𝑙", ŷ[i], logit∂²𝑙) |> cache) for i in 1:nfolds]
-        tree, predraw, cvpred = cvgrowtree(nfolds, cvfolds, factors, ∂𝑙, ∂²𝑙, maxdepth, λ, γ, minchildweight, slicelength, singlethread)
-        foreach(1:nfolds) do i
-            fm[i] .= muladd.(η, predraw[i], fm[i])
+    trainaucfold = Vector{Float64}(nfolds)
+    trainloglossfold = Vector{Float64}(nfolds)
+    testaucfold = Vector{Float64}(nfolds)
+    testloglossfold = Vector{Float64}(nfolds)
+    for i in 1:nfolds
+        trainselector = cvfolds .!= UInt8(i)
+        testselector = cvfolds .== UInt8(i)
+        model = xgblogit(label, factors; selector = BoolVariate("", trainselector), η = η, λ = λ, γ = γ, maxdepth = maxdepth,
+                         nrounds = nrounds, minchildweight = minchildweight,
+                         caching = caching, slicelength = slicelength, usefloat64 = usefloat64, singlethread = singlethread)
+        if aucmetric
+            testaucfold[i] = getauc(model.pred, label; selector = testselector)
+            if trainmetric
+                trainaucfold[i] = getauc(model.pred, label; selector = trainselector)
+            end
         end
-        push!(trees, tree)
-        (fm, trees, cvpred)
+        if loglossmetric
+            testloglossfold[i] = getlogloss(model.pred, label; selector = testselector)
+            if trainmetric
+                trainloglossfold[i] = getlogloss(model.pred, label; selector = trainselector)
+            end
+        end
     end
-    CVXGModel{T}(trees, λ, γ, η, minchildweight, maxdepth, cvpred)
+    res = Dict{String, Float64}()
+    if aucmetric
+        if trainmetric
+            res["train_auc_mean"] = mean(trainaucfold)
+            res["train_auc_std"] = std(trainaucfold)
+        end
+        res["test_auc_mean"] = mean(testaucfold)
+        res["test_auc_std"] = std(testaucfold)
+    end
+    if loglossmetric
+        if trainmetric
+            res["train_logloss_mean"] = mean(trainloglossfold)
+            res["train_logloss_std"] = std(trainloglossfold)
+        end
+        res["test_logloss_mean"] = mean(testloglossfold)
+        res["test_logloss_std"] = std(testloglossfold)
+    end
+    res
 end
 
 function predict(model::XGModel{T}, dataframe::AbstractDataFrame) where {T<:AbstractFloat}
@@ -95,31 +122,36 @@ function predict(model::XGModel{T}, dataframe::AbstractDataFrame) where {T<:Abst
     sigmoid.(f0)
 end
 
-function getauc(pred::Vector{T}, label::AbstractCovariate{S}) where {T <: AbstractFloat} where {S <: AbstractFloat}
+function getauc(pred::Vector{T}, label::AbstractCovariate{S}; selector::BitArray{1} = BitArray{1}()) where {T <: AbstractFloat} where {S <: AbstractFloat}
     label = convert(Vector{S}, label)
+    label = length(selector) == 0 ? label : label[selector]
+    pred = length(selector) == 0 ? pred : pred[selector]
     perm = sortperm(pred; rev = true)
-    sum_auc = 0.0
-    sum_pospair = 0.0
-    sum_npos = 0.0
-    sum_nneg = 0.0
-    buf_pos = 0.0
-    buf_neg = 0.0
-    for i in 1:length(pred)
-        p = pred[perm[i]]
-        r = label[perm[i]]
-        if i != 1 && p != pred[perm[i - 1]]
-            sum_pospair = sum_pospair +  buf_neg * (sum_npos + buf_pos * 0.5)
-            sum_npos = sum_npos + buf_pos
-            sum_nneg = sum_nneg + buf_neg
-            buf_neg = 0.0
-            buf_pos = 0.0
-        end
-        buf_pos = buf_pos + r 
-        buf_neg = buf_neg + (1.0 - r)
-    end
-    sum_pospair = sum_pospair + buf_neg * (sum_npos + buf_pos * 0.5)
-    sum_npos = sum_npos + buf_pos
-    sum_nneg = sum_nneg + buf_neg
-    sum_auc = sum_auc + sum_pospair / (sum_npos * sum_nneg)
-    sum_auc 
+    len = length(label)
+    sumlabel = sum(label)
+    cumlabel = cumsum(label[perm])
+    x = ones(S, len)
+    cumcount = cumsum!(x, x)
+    pred = pred[perm]
+    diff = view(pred, 2:len) .- view(pred, 1:(len - 1))
+    isstep = diff .!= zero(T)
+    push!(isstep, true)
+    cumlabel = cumlabel[isstep]
+    cumcount = cumcount[isstep]
+    tpr = (cumlabel ./ sumlabel)
+    fpr = ((cumcount .- cumlabel) ./ (cumcount .- cumlabel .+ length(label) .- cumcount .- (sumlabel .- cumlabel)))
+    len = length(tpr)
+    fpr1 = view(fpr, 1:(len-1))
+    fpr2 = view(fpr, 2:len)
+    tpr1 = view(tpr, 1:(len - 1))
+    tpr2 = view(tpr, 2:len)
+    area0 = fpr[1] * tpr[1] 
+    0.5 * (sum((tpr1 .+ tpr2) .* (fpr2 .- fpr1)) + area0)
+end
+
+function getlogloss(pred::Vector{T}, label::AbstractCovariate{S}; selector::BitArray{1} = BitArray{1}()) where {T <: AbstractFloat} where {S <: AbstractFloat}
+    label = convert(Vector{S}, label)
+    label::Vector{S} = length(selector) == 0 ? label : label[selector]
+    pred::Vector{T} = length(selector) == 0 ? pred : pred[selector]
+    mean(logloss.(label, pred))
 end

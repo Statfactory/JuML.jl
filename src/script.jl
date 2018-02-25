@@ -24,29 +24,23 @@ deptime = factor(train_df["DepTime"], 1:2930)
 distance = factor(train_df["Distance"], 11:4962)
 
 factors = [train_df.factors; [deptime, distance]]
-nfolds = 5
-cvfolds = JuML.getnfolds(nfolds, false, length(label))
-selector = BoolVariate("", cvfolds .!= UInt8(1) )
 
-@time model = xgblogit(label, factors; selector = selector, η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 5, caching = true, usefloat64 = false, singlethread = true);
+@time model = xgblogit(label, factors; η = 0.3, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 2, maxdepth = 5, caching = true, usefloat64 = false, singlethread = true);
 
-@time cvmodel = JuML.cvxgblogit(label, factors, 5; η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 5, caching = true, usefloat64 = false, singlethread = true, slicelength = 10000);
-
-res = predict(cvmodel.trees[1][1], train_df)
-JuML.sigmoid.(res[1:5])
-JuML.sigmoid.(cvmodel.cvpred[1:5])
-model.pred[1:5]
-@time pred = predict(model, test_df)
-pred[1:5]
+pred = predict(model, test_df)
 testlabel = covariate(test_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)
 auc = getauc(pred, testlabel)
+logloss = getlogloss(pred, testlabel)
 
-x = [1.0, 2.0, 3.0]
-y = x .== 1.0
-z = view(y, 1:2)
+@time cv = cvxgblogit(label, factors, 5; aucmetric = true, loglossmetric = true, trainmetric = true, η = 0.3, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 2, maxdepth = 5, caching = true, usefloat64 = false, singlethread = true);
 
+model.pred[1:5]
+@time pred = predict(model, test_df)
 
+pred[1:5]
+testlabel = covariate(test_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)
 
+@time auc = getauc(pred, testlabel)
 
 #importcsv("src\\Data\\agaricus_train.csv"; isnumeric = (colname, _) -> colname == "label")
 

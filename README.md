@@ -62,7 +62,7 @@ deptime = factor(train_df["DepTime"], 1:2930)
 distance = factor(train_df["Distance"], 11:4962)
 ```
 
-Last thing to do before we can run XGBoost is to create a vector of factors as features. We need to add *deptime* and *distance* factors to train dataframe factors (*dep_delayed_15min* will be excluded from the model features automatically):
+The last thing to do before we can run XGBoost is to create a vector of factors as features. We need to add *deptime* and *distance* factors to train dataframe factors (*dep_delayed_15min* will be excluded from the model features automatically):
 
 ```
 factors = [train_df.factors; [deptime, distance]]
@@ -73,12 +73,21 @@ We are now ready to run XGBoost:
 model = xgblogit(label, factors; η = 0.3, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 2, maxdepth = 5, caching = true, usefloat64 = false, singlethread = true);
 ```
 
-We can apply the model to our test data and calculate auc:
+We can apply the model to our test data and calculate auc and logloss:
 ```
 pred = predict(model, test_df)
 testlabel = covariate(test_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)
 auc = getauc(pred, testlabel)
+logloss = getlogloss(pred, testlabel)
 ```
+
+There is a special function for nfold cross validation. It returns a dictionary with auc/logloss mean/std:
+```
+cv = cvxgblogit(label, factors, 5; aucmetric = true, loglossmetric = true, trainmetric = false, η = 0.3, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 2, maxdepth = 5, caching = true, usefloat64 = false, singlethread = true);
+```
+
+
+
 
 
 
