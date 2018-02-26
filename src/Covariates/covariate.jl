@@ -18,12 +18,11 @@ function Covariate(data::AbstractVector{T}) where {T<:Integer}
 end
 
 function Covariate{T}(name::String, length::Integer, datpath::String) where {T<:AbstractFloat}
-    data = Vector{UInt8}(sizeof(T) * length)
+    data = Vector{T}(length)
     open(datpath) do f
-        readbytes!(f, data)
+        read!(f, data)
     end
-    covdata = reinterpret(T, data)
-    Covariate{T}(name, covdata)
+    Covariate{T}(name, data)
 end
 
 function slice(covariate::Covariate{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:AbstractFloat}

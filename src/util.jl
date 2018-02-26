@@ -8,6 +8,19 @@ function nextslice(ind::Tuple{Int64, Int64, Int64})
     end
 end
 
+function nextdatachunk(state::Tuple{Vector{T}, IOStream, Integer, Integer, Integer}) where {T}
+    buffer, iostream, fromobs, toobs, slicelength = state
+    slicelength = verifyslicelength(fromobs, toobs, slicelength) 
+    if eof(iostream) || slicelength == 0
+        close(iostream)
+        Nullable{Vector{T}}(), state
+    else
+        buffer = resize!(buffer, slicelength)
+        read!(iostream, buffer)
+        Nullable{Vector{T}}(buffer), (buffer, iostream, fromobs + slicelength, toobs, slicelength)
+    end
+end
+
 function nextline(iostream::IOStream)
     if eof(iostream)
         close(iostream)
@@ -18,7 +31,7 @@ function nextline(iostream::IOStream)
 end
 
 function verifyslicelength(fromobs::Integer, toobs::Integer, slicelength::Integer)
-    toobs < fromobs || slicelength <= 0? 0 : min(slicelength, toobs - fromobs + 1)
+    toobs < fromobs || slicelength <= 0 ? 0 : min(slicelength, toobs - fromobs + 1)
 end
 
 function slice(data::Vector{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T}

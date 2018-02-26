@@ -1,5 +1,5 @@
 mutable struct CachedFactor{T<:Unsigned} <: AbstractFactor{T}
-    cache::Nullable{AbstractVector{T}}
+    cache::Dict{Tuple{Integer, Integer}, AbstractVector{T}}
     basefactor::AbstractFactor{T}
     lockobj::Threads.TatasLock
 end
@@ -11,29 +11,30 @@ getname(var::CachedFactor) = getname(var.basefactor)
 getlevels(var::CachedFactor) = getlevels(var.basefactor)
 
 function CachedFactor(basefactor::AbstractFactor{T}) where {T<:Unsigned}
-    CachedFactor{T}(Nullable{AbstractVector{T}}(), basefactor, Threads.TatasLock())   
+    CachedFactor{T}(Dict{Tuple{Integer, Integer}, AbstractVector{T}}(), basefactor, Threads.TatasLock())   
 end
 
 function cache(basefactor::AbstractFactor{T}) where {T<:Unsigned}
-    CachedFactor{T}(Nullable{AbstractVector{T}}(), basefactor, Threads.TatasLock()) 
+    CachedFactor{T}(Dict{Tuple{Integer, Integer}, AbstractVector{T}}(), basefactor, Threads.TatasLock()) 
 end
 
 function slice(factor::CachedFactor{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:Unsigned}
     basefactor = factor.basefactor
+    slicelength = verifyslicelength(fromobs, toobs, slicelength) 
     if isa(basefactor, CachedFactor) || isa(basefactor, Factor)
         slice(basefactor, fromobs, toobs, slicelength)
     else
         lockobj = factor.lockobj
         lock(lockobj)
         try
-            if isnull(factor.cache)
-                v, _ = tryread(slice(basefactor, 1, length(basefactor), length(basefactor)))
-                factor.cache = v
+            if !((fromobs, toobs) in keys(factor.cache))
+                v, _ = tryread(slice(basefactor, fromobs, toobs, toobs - fromobs + 1))
+                factor.cache[(fromobs, toobs)] = get(v)
             end
         finally
             unlock(lockobj)
         end
-        slice(get(factor.cache), fromobs, toobs, slicelength)
+        slice(factor.cache[(fromobs, toobs)], 1, toobs - fromobs + 1, slicelength)
     end
 end
 

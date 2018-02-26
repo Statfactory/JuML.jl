@@ -1,3 +1,4 @@
+#push!(LOAD_PATH, "C:\\Users\\adamm\\Dropbox\\Development\\JuML\\src")
 using JuML
 
 importcsv("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetrain.csv")
@@ -25,7 +26,7 @@ distance = factor(train_df["Distance"], 11:4962)
 
 factors = [train_df.factors; [deptime, distance]]
 
-@time model = xgblogit(label, factors; η = 0.3, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 2, maxdepth = 5, caching = true, usefloat64 = false, singlethread = true);
+@time model = xgblogit(label, factors; η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 5, caching = true, usefloat64 = false, singlethread = true, slicelength = 0);
 
 pred = predict(model, test_df)
 testlabel = covariate(test_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)
@@ -33,7 +34,7 @@ auc = getauc(pred, testlabel)
 logloss = getlogloss(pred, testlabel)
 
 @time cv = cvxgblogit(label, factors, 5; aucmetric = true, loglossmetric = true, trainmetric = true, η = 0.3, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 2, maxdepth = 5, caching = true, usefloat64 = false, singlethread = true);
-
+cv
 model.pred[1:5]
 @time pred = predict(model, test_df)
 

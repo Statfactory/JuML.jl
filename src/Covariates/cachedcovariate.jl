@@ -1,5 +1,5 @@
 mutable struct CachedCovariate{T<:AbstractFloat} <: AbstractCovariate{T}
-    cache::Nullable{AbstractVector{T}}
+    cache::Dict{Tuple{Integer, Integer}, AbstractVector{T}}
     basecovariate::AbstractCovariate{T}
     lockobj::Threads.TatasLock
 end
@@ -9,29 +9,30 @@ Base.length(var::CachedCovariate) = length(var.basecovariate)
 getname(var::CachedCovariate) = getname(var.basecovariate)
 
 function CachedCovariate(basecovariate::AbstractCovariate{T}) where {T<:AbstractFloat}
-    CachedCovariate{T}(Nullable{AbstractVector{T}}(), basecovariate, Threads.TatasLock())  
+    CachedCovariate{T}(Dict{Tuple{Integer, Integer}, AbstractVector{T}}(), basecovariate, Threads.TatasLock())  
 end
 
 function cache(basecovariate::AbstractCovariate{T}) where {T<:AbstractFloat}
-    CachedCovariate{T}(Nullable{AbstractVector{T}}(), basecovariate, Threads.TatasLock())  
+    CachedCovariate{T}(Dict{Tuple{Integer, Integer}, AbstractVector{T}}(), basecovariate, Threads.TatasLock())  
 end
 
 function slice(covariate::CachedCovariate{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:AbstractFloat}
     basecov = covariate.basecovariate
+    slicelength = verifyslicelength(fromobs, toobs, slicelength) 
     if isa(basecov, CachedCovariate) || isa(basecov, Covariate)
         slice(basecov, fromobs, toobs, slicelength)
     else
         lockobj = covariate.lockobj
         lock(lockobj)
         try
-            if isnull(covariate.cache)
-                v, _ = tryread(slice(basecov, 1, length(basecov), length(basecov)))
-                covariate.cache = v
+            if !((fromobs, toobs) in keys(covariate.cache))
+                v, _ = tryread(slice(basecov, fromobs, toobs, toobs - fromobs + 1))
+                covariate.cache[(fromobs, toobs)] = get(v)
             end
         finally
             unlock(lockobj)
         end
-        slice(get(covariate.cache), fromobs, toobs, slicelength)
+        slice(covariate.cache[(fromobs, toobs)], 1, toobs - fromobs + 1, slicelength)
     end
 end
 
