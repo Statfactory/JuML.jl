@@ -70,7 +70,7 @@ factors = [train_df.factors; [deptime, distance]]
 
 We are now ready to run XGBoost:
 ```
-model = xgblogit(label, factors; η = 0.3, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 2, maxdepth = 5, caching = true, usefloat64 = false, singlethread = true);
+model = xgblogit(label, factors; η = 0.3, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 2, maxdepth = 5, ordstumps = true, caching = true, usefloat64 = false, singlethread = true);
 ```
 
 We can apply the model to our test data and calculate auc and logloss:
@@ -83,7 +83,7 @@ logloss = getlogloss(pred, testlabel)
 
 There is a special function for nfold cross validation. It returns a dictionary with auc/logloss mean/std:
 ```
-cv = cvxgblogit(label, factors, 5; aucmetric = true, loglossmetric = true, trainmetric = false, η = 0.3, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 2, maxdepth = 5, caching = true, usefloat64 = false, singlethread = true);
+cv = cvxgblogit(label, factors, 5; aucmetric = true, loglossmetric = true, trainmetric = false, η = 0.3, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 2, maxdepth = 5, ordstumps = true, caching = true, usefloat64 = false, singlethread = true);
 ```
 
 

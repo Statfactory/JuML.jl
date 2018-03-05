@@ -17,3 +17,7 @@ function slice(boolvar::IfElseBoolVariate, fromobs::Integer, toobs::Integer, sli
                   slice(falseboolvar, fromobs, toobs, slicelength)) 
     mapslice3(f, slices, slicelength, Bool) 
 end
+
+function Base.ifelse(ifboolvar::AbstractBoolVariate, trueboolvar::AbstractBoolVariate, falseboolvar::AbstractBoolVariate)
+    IfElseBoolVariate("$(getname(ifboolvar))?$(getname(trueboolvar)):$(getname(falseboolvar))", ifboolvar, trueboolvar, falseboolvar)
+end

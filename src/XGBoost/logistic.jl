@@ -29,7 +29,7 @@ end
 
 function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
                   selector::AbstractBoolVariate = BoolVariate("", BitArray{1}(0)),
-                  η::Real = 0.3, λ::Real = 1.0, γ::Real = 0.0, maxdepth::Integer = 6, nrounds::Integer = 2,
+                  η::Real = 0.3, λ::Real = 1.0, γ::Real = 0.0, maxdepth::Integer = 6, nrounds::Integer = 2, ordstumps::Bool = false, pruning::Bool = true,
                   minchildweight::Real = 1.0, caching::Bool = true, slicelength::Integer = 0, usefloat64::Bool = false,
                   singlethread::Bool = false)
 
@@ -41,16 +41,16 @@ function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
     γ = T(γ)
     η = T(η)
     minchildweight = T(minchildweight)
-    μ = T(0.5f0)
+    μ = T(0.5)
     f0 = Vector{T}(length(label))
     fill!(f0, T(logitraw(μ)))
     zerocov = ConstCovariate(zero(T), length(selector))
     fm, trees = fold((f0, Vector{XGTree}()), Seq(1:nrounds)) do x, m
         fm, trees = x
         ŷ = Covariate(sigmoid.(fm)) 
-        ∂𝑙 = length(selector) == 0 ? Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) |> cache : IfElseCovariate(selector, Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙), zerocov) |> cache
-        ∂²𝑙 = length(selector) == 0 ? TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙) |> cache : IfElseCovariate(selector, TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙), zerocov) |> cache
-        tree, predraw = growtree(factors, ∂𝑙, ∂²𝑙, maxdepth, λ, γ, minchildweight, slicelength, singlethread)
+        ∂𝑙 = length(selector) == 0 ? Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) |> cache : ifelse(selector, Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙), zerocov) |> cache
+        ∂²𝑙 = length(selector) == 0 ? TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙) |> cache : ifelse(selector, TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙), zerocov) |> cache
+        tree, predraw = growtree(factors, ∂𝑙, ∂²𝑙, maxdepth, λ, γ, minchildweight, ordstumps, pruning, slicelength, singlethread)
         fm .= muladd.(η, predraw, fm)
         push!(trees, tree)
         (fm, trees)
@@ -61,7 +61,7 @@ end
 
 function cvxgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor}, nfolds::Integer;
                     aucmetric::Bool = true, loglossmetric::Bool = true, trainmetric::Bool = false,
-                    η::Real = 0.3, λ::Real = 1.0, γ::Real = 0.0, maxdepth::Integer = 6, nrounds::Integer = 2,
+                    η::Real = 0.3, λ::Real = 1.0, γ::Real = 0.0, maxdepth::Integer = 6, nrounds::Integer = 2, ordstumps::Bool = false, pruning::Bool = true,
                     minchildweight::Real = 1.0, caching::Bool = true, slicelength::Integer = 0, usefloat64::Bool = false,
                     singlethread::Bool = false)
 
@@ -74,7 +74,7 @@ function cvxgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor},
         trainselector = cvfolds .!= UInt8(i)
         testselector = cvfolds .== UInt8(i)
         model = xgblogit(label, factors; selector = BoolVariate("", trainselector), η = η, λ = λ, γ = γ, maxdepth = maxdepth,
-                         nrounds = nrounds, minchildweight = minchildweight,
+                         nrounds = nrounds, ordstumps = ordstumps, pruning = pruning, minchildweight = minchildweight,
                          caching = caching, slicelength = slicelength, usefloat64 = usefloat64, singlethread = singlethread)
         if aucmetric
             testaucfold[i] = getauc(model.pred, label; selector = testselector)
@@ -111,7 +111,7 @@ end
 
 function predict(model::XGModel{T}, dataframe::AbstractDataFrame) where {T<:AbstractFloat}
     trees = model.trees
-    μ = T(0.5f0)
+    μ = T(0.5)
     η = model.η
     f0 = Vector{T}(length(dataframe))
     fill!(f0, T(logitraw(μ)))  

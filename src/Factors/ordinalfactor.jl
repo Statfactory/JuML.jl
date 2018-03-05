@@ -3,6 +3,7 @@ struct OrdinalFactor{T<:Unsigned} <: AbstractFactor{T}
     levels::AbstractVector{<:AbstractString}
     basefactor::AbstractFactor{T}
     newindex::Vector{T}
+    islessfun::Nullable{Function}
 end
 
 Base.length(factor::OrdinalFactor{T}) where {T<:Unsigned} = length(factor.basefactor)
@@ -17,15 +18,15 @@ function OrdinalFactor(name::String, basefactor::AbstractFactor{T}, islessfun::F
     for i in 1:levelcount
         newindex[i + 1] = perm[i]
     end
-    OrdinalFactor{T}(name, sortlevels, basefactor, newindex)
+    OrdinalFactor{T}(name, sortlevels, basefactor, newindex, Nullable{Function}(islessfun))
 end
 
 function OrdinalFactor(factor::AbstractFactor{T}) where {T<:Unsigned}
-    OrdinalFactor{T}(getname(factor), getlevels(factor), factor, Vector{T}())
+    OrdinalFactor{T}(getname(factor), getlevels(factor), factor, Vector{T}(), Nullable{Function}())
 end
 
 function slice(factor::OrdinalFactor{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:Unsigned} 
-    if length(factor.newindex) == 0
+    if isnull(factor.islessfun) 
         slice(factor.basefactor, fromobs, toobs, slicelength)
     else
         newindex = factor.newindex
@@ -38,4 +39,12 @@ end
 
 function isordinal(factor::OrdinalFactor{T}) where {T<:Unsigned}
    true
+end
+
+function Base.map(factor::OrdinalFactor{T}, dataframe::AbstractDataFrame) where {T<:Unsigned}
+    if isnull(factor.islessfun)
+        OrdinalFactor(map(factor.basefactor, dataframe))
+    else
+        OrdinalFactor(factor.name, map(factor.basefactor, dataframe), get(factor.islessfun))
+    end
 end

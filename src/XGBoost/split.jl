@@ -4,7 +4,8 @@ function getweight(gradient::LossGradient{T}, λ::T) where {T<:AbstractFloat}
 end
 
 function getloss(∂𝑙::T, ∂²𝑙::T, λ::T, γ::T) where {T<:AbstractFloat} 
-    -0.5 * ∂𝑙 * ∂𝑙 / (∂²𝑙 + λ) + γ
+    a::T = -0.5
+    a * ∂𝑙 * ∂𝑙 / (∂²𝑙 + λ) + γ
 end
 
 function getloss(node::LeafNode{T}, λ::T, γ::T) where {T<:AbstractFloat} 
@@ -141,7 +142,7 @@ function splitnodeids!(nodeids::Vector{<:Integer}, layer::TreeLayer{T}, slicelen
 end
 
 function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradient::Vector{LossGradient{T}},
-                      λ::T, γ::T, min∂²𝑙::T) where {T<:AbstractFloat}
+                      λ::T, γ::T, min∂²𝑙::T, ordstumps::Bool) where {T<:AbstractFloat}
 
     isord = isordinal(factor)
     gradstart = 2 
@@ -189,7 +190,7 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
         end
     end
 
-    @inbounds for i in 2:(levelcount - 1)
+    @inbounds for i in 2:levelcount
         if !partition.mask[i]
             continue
         end
@@ -233,7 +234,8 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
                     split.loss = leftwithmisstotal
                 end
             end
-        else
+        end
+        if ordstumps || !isord
             if singlelevelwithmisstotal < split.loss && (∂²𝑙 + miss∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - ∂²𝑙 >= min∂²𝑙)
                 if singlelevelwitouthmisstotal < singlelevelwithmisstotal && (∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - ∂²𝑙 + miss∂²𝑙 >= min∂²𝑙)
                     split.leftgradient.∂𝑙 = ∂𝑙
@@ -271,7 +273,7 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
 end
 
 function getnewsplit(gradient::Vector{Vector{LossGradient{T}}}, nodes::Vector{TreeNode{T}}, factor::AbstractFactor,
-                     λ::T, γ::T, min∂²𝑙::T, singlethread::Bool) where {T<:AbstractFloat}
+                     λ::T, γ::T, min∂²𝑙::T, ordstumps::Bool, singlethread::Bool) where {T<:AbstractFloat}
     newsplit = Vector{Nullable{SplitNode{T}}}(length(gradient))
     if !singlethread && length(gradient) > 2 * Threads.nthreads()
         Threads.@threads for i in 1:length(gradient)
@@ -279,7 +281,7 @@ function getnewsplit(gradient::Vector{Vector{LossGradient{T}}}, nodes::Vector{Tr
             if nodes[i].cansplit
                 partition = nodes[i].partitions[factor]
                 if count(partition.mask) > 1
-                    newsplit[i] = getsplitnode(factor, nodes[i].partitions[factor],  grad, λ, γ, min∂²𝑙)
+                    newsplit[i] = getsplitnode(factor, nodes[i].partitions[factor],  grad, λ, γ, min∂²𝑙, ordstumps)
                 else
                     newsplit[i] = Nullable{SplitNode{T}}()
                 end
@@ -293,7 +295,7 @@ function getnewsplit(gradient::Vector{Vector{LossGradient{T}}}, nodes::Vector{Tr
             if nodes[i].cansplit
                 partition = nodes[i].partitions[factor]
                 if count(partition.mask) > 1
-                    newsplit[i] = getsplitnode(factor, nodes[i].partitions[factor],  grad, λ, γ, min∂²𝑙)
+                    newsplit[i] = getsplitnode(factor, nodes[i].partitions[factor],  grad, λ, γ, min∂²𝑙, ordstumps)
                 else
                     newsplit[i] = Nullable{SplitNode{T}}()
                 end
@@ -308,51 +310,20 @@ end
 function findbestsplit(state::TreeGrowState{T}) where {T<:AbstractFloat}
 
     nodecansplit = [n.cansplit for n in state.nodes]
-    # factorcount = length(state.factors)
-    # nthreads = state.singlethread ? 1 : Threads.nthreads()
-    # newsplits = Vector{Vector{Nullable{SplitNode{T}}}}(factorcount)
-
-    # if nthreads == 1
-    #     for i in 1:factorcount
-    #         factor = state.factors[i]
-    #         partitions = [node.partitions[factor] for node in state.nodes]
-    #         gradient = sumgradient(state.nodeids, nodecansplit, factor, partitions, state.∂𝑙covariate, state.∂²𝑙covariate, state.slicelength, true)
-    #         newsplits[i] = getnewsplit(gradient, state.nodes, factor, state.λ, state.γ, state.min∂²𝑙, true)
-    #     end
-    # else
-    #     Threads.@threads for i in 1:factorcount
-    #         factor = state.factors[i]
-    #         partitions = [node.partitions[factor] for node in state.nodes]
-    #         gradient = sumgradient(state.nodeids, nodecansplit, factor, partitions, state.∂𝑙covariate, state.∂²𝑙covariate, state.slicelength, true)
-    #         newsplits[i] = getnewsplit(gradient, state.nodes, factor, state.λ, state.γ, state.min∂²𝑙, true)
-    #     end
-    # end
-
-    # foldl(state.nodes, newsplits) do currsplit, newsplit
-    #     res = Vector{TreeNode{T}}(length(newsplit))
-    #     for i in 1:length(newsplit)
-    #          if !isnull(newsplit[i]) &&
-    #             (isa(currsplit[i], LeafNode{T}) || get(newsplit[i]).loss < getloss(currsplit[i], state.λ, state.γ))
-    #             res[i] = get(newsplit[i]) 
-    #          else
-    #             res[i] = currsplit[i] 
-    #          end
-    #     end
-    #     res
-    # end
-
     foldl(state.nodes, enumerate(state.factors)) do currsplit, nfactor
         n, factor = nfactor
         partitions = [node.partitions[factor] for node in state.nodes]
 
         gradient = sumgradient(state.nodeids, nodecansplit, factor, partitions, state.∂𝑙covariate, state.∂²𝑙covariate, state.slicelength, state.singlethread)
         
-        newsplit = getnewsplit(gradient, state.nodes, factor, state.λ, state.γ, state.min∂²𝑙, state.singlethread)
+        newsplit = getnewsplit(gradient, state.nodes, factor, state.λ, state.γ, state.min∂²𝑙, state.ordstumps, state.singlethread)
 
         res = Vector{TreeNode{T}}(length(newsplit))
         @inbounds for i in 1:length(newsplit)
+
+
              if !isnull(newsplit[i]) &&
-                (isa(currsplit[i], LeafNode{T}) || get(newsplit[i]).loss < getloss(currsplit[i], state.λ, state.γ))
+                ((state.pruning && isa(currsplit[i], LeafNode{T})) || get(newsplit[i]).loss < getloss(currsplit[i], state.λ, state.γ))
                 res[i] = get(newsplit[i]) 
              else
                 res[i] = currsplit[i] 
@@ -499,7 +470,6 @@ function predict(tree::XGTree{T}, dataframe::AbstractDataFrame) where {T<:Abstra
 
     for layer in tree.layers
         nodes = [map(n, dataframe, factormap) for n in layer.nodes]
-        #nodes = [isa(n, SplitNode) ? SplitNode{T}(factormap[n.factor], n.leftpartition, n.rightpartition, n.leftgradient, n.rightgradient, n.loss) : n for n in layer.nodes]
         splitnodeids!(nodeids, TreeLayer{T}(nodes), tree.slicelength, tree.singlethread)
     end
     predict(TreeLayer{T}(nodes), nodeids, tree.λ)
@@ -507,7 +477,7 @@ end
 
 function growtree(factors::Vector{<:AbstractFactor}, ∂𝑙covariate::AbstractCovariate{T},
                   ∂²𝑙covariate::AbstractCovariate{T}, maxdepth::Integer, λ::T, γ::T,
-                  min∂²𝑙::T, slicelength::Integer, singlethread::Bool) where {T<:AbstractFloat}
+                  min∂²𝑙::T, ordstumps::Bool, pruning::Bool, slicelength::Integer, singlethread::Bool) where {T<:AbstractFloat}
 
     len = length(∂𝑙covariate)
     maxnodecount = 2 ^ maxdepth
@@ -516,15 +486,20 @@ function growtree(factors::Vector{<:AbstractFactor}, ∂𝑙covariate::AbstractC
     grad0 = sumgradient(nodeids, [true], intercept, [LevelPartition([true], false)], ∂𝑙covariate, ∂²𝑙covariate, slicelength, singlethread)[1][1]
     nodes0 = Vector{TreeNode{T}}()
     push!(nodes0, LeafNode{T}(grad0, true, Dict([f => LevelPartition(ones(Bool, length(getlevels(f))), true) for f in factors])))
-    state0 = TreeGrowState{T}(nodeids, nodes0, factors, ∂𝑙covariate, ∂²𝑙covariate, λ, γ, min∂²𝑙, slicelength, singlethread)
+    state0 = TreeGrowState{T}(nodeids, nodes0, factors, ∂𝑙covariate, ∂²𝑙covariate, λ, γ, min∂²𝑙, ordstumps, pruning, slicelength, singlethread)
     layers = collect(Iterators.take(Seq(TreeLayer{T}, state0, nextlayer), maxdepth))
     xgtree = XGTree{T}(layers, λ, γ, min∂²𝑙, maxdepth, slicelength, singlethread)
-    tree = convert(Tree{TreeNode{T}}, xgtree)
-    pruned = prune(tree, λ, γ)
-    prunedlayers = map((nodes -> TreeLayer{T}(nodes)) , convert(Vector{Vector{TreeNode{T}}}, convert(List{List{TreeNode{T}}}, rebalance(pruned, maxdepth))))
-    xgtree = XGTree{T}(prunedlayers, λ, γ, min∂²𝑙, maxdepth, slicelength, singlethread)
-    pred = predict(xgtree.layers[end], nodeids, λ)
-    xgtree, pred
+    if pruning
+        tree = convert(Tree{TreeNode{T}}, xgtree)
+        pruned = prune(tree, λ, γ)
+        prunedlayers = map((nodes -> TreeLayer{T}(nodes)) , convert(Vector{Vector{TreeNode{T}}}, convert(List{List{TreeNode{T}}}, rebalance(pruned, maxdepth))))
+        xgtree = XGTree{T}(prunedlayers, λ, γ, min∂²𝑙, maxdepth, slicelength, singlethread)
+        pred = predict(xgtree.layers[end], nodeids, λ)
+        xgtree, pred
+    else
+        pred = predict(xgtree.layers[end], nodeids, λ)
+        xgtree, pred
+    end
 end
 
 function Base.convert(::Type{Tree{TreeNode{T}}}, xgtree::XGTree{T}) where {T<:AbstractFloat} 

@@ -13,3 +13,7 @@ function slice(boolvar::TransBoolVariate, fromobs::Integer, toobs::Integer, slic
     slices = slice(baseboolvar, fromobs, toobs, slicelength)
     mapslice(f, slices, slicelength, Bool)
 end
+
+function Base.broadcast(f, baseboolvar::AbstractBoolVariate)
+    Trans2BoolVariate("$(f)($(getname(baseboolvar)))", baseboolvar, f)
+end

@@ -71,11 +71,11 @@ function Factor(name::String, data::AbstractVector{<:AbstractString})
 end
 
 function slice(factor::Factor{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:Unsigned}
+    slicelength = verifyslicelength(fromobs, toobs, slicelength) 
     slice(factor.data, fromobs, toobs, slicelength)
 end
 
 function Base.map(factor::Factor, dataframe::AbstractDataFrame)
     dataframe[getname(factor)]
-    #PermuteFactor(factor, dataframe[getname(factor)])
 end
 

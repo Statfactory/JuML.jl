@@ -48,6 +48,8 @@ mutable struct TreeGrowState{T<:AbstractFloat}
     λ::T
     γ::T
     min∂²𝑙::T
+    ordstumps::Bool
+    pruning::Bool
     slicelength::Integer
     singlethread::Bool
 end

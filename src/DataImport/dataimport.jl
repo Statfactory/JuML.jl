@@ -198,16 +198,26 @@ function isanylevelnumeric(colname::AbstractString, levelfreq::Dict{String, Int6
     any([!isnull(tryparse(Float32, strip(k))) for k in keys(levelfreq)])
 end
 
-function importcsv(path::String; maxobs::Integer = -1, chunksize::Integer = SLICELENGTH, nas::Vector{String} = Vector{String}(),
+function importcsv(path::String; path2::String = "", maxobs::Integer = -1, chunksize::Integer = SLICELENGTH, nas::Vector{String} = Vector{String}(),
                    isnumeric::Function = isanylevelnumeric, drop::Vector{String} = Vector{String}())
     nas = Set{String}(nas)
     push!(nas, "")
     path = abspath(path)
-    outfolder = splitext(path)[1]
+    outfolder = path2 == "" ? splitext(path)[1] : splitext(path)[1] * splitext(basename(path2))[1]
     outtempfolder = joinpath(dirname(path), randstring(10))
     mkpath(outtempfolder)
     iostream = open(path)
-    lineseq = maxobs > -1 ? Iterators.take(Seq(String, iostream, nextline), maxobs + 1) : Seq(String, iostream, nextline)
+    lineseq = maxobs > -1 ? Iterators.take(Seq(String, iostream, nextline), maxobs + 1) : begin 
+        if path2 == ""
+            Seq(String, iostream, nextline)
+        else
+            s1 = Seq(String, iostream, nextline)
+            iostream2 = open(path2)
+            s2 = Seq(String, iostream2, nextline)
+            _, s2 = tryread(s2)
+            concat(s1, s2)
+        end
+    end
     lines = map((line -> split(line, ",")), lineseq, Vector{SubString{String}})
     colnames, datalines = lines |> tryread
     if !isnull(colnames)

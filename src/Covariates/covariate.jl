@@ -26,6 +26,7 @@ function Covariate{T}(name::String, length::Integer, datpath::String) where {T<:
 end
 
 function slice(covariate::Covariate{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:AbstractFloat}
+    slicelength = verifyslicelength(fromobs, toobs, slicelength) 
     slice(covariate.data, fromobs, toobs, slicelength)
 end
 

@@ -25,3 +25,33 @@ end
 function Base.map(covariate::TransCovariate, dataframe::AbstractDataFrame)
     TransCovariate(covariate.name, map(covariate.basecovariate, dataframe), covariate.transform)
 end
+
+function covariate(f, basecovariate::AbstractCovariate{S}) where {S<:AbstractFloat}
+    TransCovariate("$(f)($(getname(basecovariate)))", basecovariate, f)
+end
+
+function Base.sqrt(basecovariate::AbstractCovariate{S}) where {S<:AbstractFloat}
+    covariate(sqrt, basecovariate)
+end
+
+function Base.log(basecovariate::AbstractCovariate{S}) where {S<:AbstractFloat}
+    covariate(log, basecovariate)
+end
+
+function Base.broadcast(f, basecovariate::AbstractCovariate{S}) where {S<:AbstractFloat}  
+    if typeof(f(zero(S))) <: AbstractFloat
+        TransCovariate("$(f)($(getname(basecovariate)))", basecovariate, f)
+    else
+        TransCovBoolVariate{S}("$(f)($(getname(basecovariate)))", basecovariate, f) 
+    end
+end
+
+# function Base.broadcast(f, basecovariate::AbstractCovariate{S}, a::Real) where {S<:AbstractFloat}
+#     a = S(a)
+#     TransCovariate("$(getname(basecovariate))$(f)$(a)", basecovariate, x -> f(x, a))
+# end
+
+# function Base.broadcast(f, a::Real, basecovariate::AbstractCovariate{S}) where {S<:AbstractFloat} 
+#     a = S(a)
+#     TransCovariate("$(a)$(f)$(getname(basecovariate))", basecovariate, x -> f(a, x))
+# end

@@ -31,3 +31,19 @@ function Base.map(covariate::Trans2Covariate, dataframe::AbstractDataFrame)
     Trans2Covariate(covariate.name, map(covariate.basecovariate1, dataframe), map(covariate.basecovariate1, dataframe),
                     covariate.transform)
 end
+
+function Base.broadcast(f, basecovariate1::AbstractCovariate{S}, basecovariate2::AbstractCovariate{T}) where {S<:AbstractFloat}  where {T<:AbstractFloat}
+    if typeof(f(zero(S), zero(T))) <: AbstractFloat
+        Trans2Covariate("$(getname(basecovariate1))$(f)$(getname(basecovariate2))", basecovariate1, basecovariate2, f)
+    else
+        Trans2CovBoolVariate{S, T}("$(getname(basecovariate1))$(f)$(getname(basecovariate2))", basecovariate1, basecovariate2, f)
+    end
+end
+
+# function covariate(f, basecovariate1::AbstractCovariate{S}, basecovariate2::AbstractCovariate{T}) where {S<:AbstractFloat}  where {T<:AbstractFloat}
+#     Trans2Covariate("$(f)($(getname(basecovariate1))$(getname(basecovariate2)))", basecovariate1, basecovariate2, f)
+# end
+
+# function covariate(f, basecovariate1::AbstractCovariate{S}, basecovariate2::AbstractCovariate{T}) where {S<:AbstractFloat}  where {T<:AbstractFloat}
+#     Trans2Covariate("$(f)($(getname(basecovariate1))$(getname(basecovariate2)))", basecovariate1, basecovariate2, f)
+# end

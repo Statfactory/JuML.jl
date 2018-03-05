@@ -285,4 +285,36 @@ function Base.collect(xs::Seq{T}) where {T}
     res
 end
 
+function concat(xs::EmptySeq{T}, ys::Seq{T}) where {T}
+    ys
+end
+
+function concat(xs::Seq{T}, ys::EmptySeq{T}) where {T}
+    xs
+end
+
+function concat(xs::ConsSeq{T}, ys::ConsSeq{T}) where {T}
+    return ConsSeq{T}(() ->
+            begin
+                statex, nextx = xs.genfun()
+                statey, nexty = ys.genfun()
+                (statex, statey), s -> 
+                    begin
+                        _statex, _statey = s
+                        x, newstatex = nextx(_statex) 
+                        if isnull(x)
+                            y, newstatey = nexty(_statey) 
+                            if isnull(y)
+                                Nullable{T}(), (newstatex, newstatey)
+                            else
+                                Nullable{T}(get(y)), (newstatex, newstatey)
+                            end
+                        else
+                            Nullable{T}(get(x)), (newstatex, _statey)
+                        end
+                    end
+            end
+            )
+end
+
 
