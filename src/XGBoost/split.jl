@@ -18,15 +18,6 @@ function getloss(node::SplitNode{T}, λ::T, γ::T) where {T<:AbstractFloat}
     node.loss
 end
 
-function getloss(tree::ConsTree{TreeNode{T}}, λ::T, γ::T) where {T<:AbstractFloat} 
-    node = tree.value
-    if isempty(tree.lefttree) && isempty(tree.righttree)
-        getloss(node, λ, γ)
-    else
-        getloss(tree.lefttree, λ, γ) + getloss(tree.righttree, λ, γ)
-    end
-end
-
 function sumgradientslice!(∂𝑙sum0, ∂²𝑙sum0, nodeids::Vector{<:Integer}, nodecansplit::Vector{Bool}, factor::AbstractFactor,
                            ∂𝑙covariate::AbstractCovariate{T}, ∂²𝑙covariate::AbstractCovariate{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:AbstractFloat}
 
@@ -145,7 +136,7 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
                       λ::T, γ::T, min∂²𝑙::T, ordstumps::Bool) where {T<:AbstractFloat}
 
     isord = isordinal(factor)
-    gradstart = 2 
+    gradstart = findfirst(partition.mask, true) + 1
     ∂𝑙sum0 = sum((grad -> grad.∂𝑙), gradient[gradstart:end])
     ∂²𝑙sum0 = sum((grad -> grad.∂²𝑙), gradient[gradstart:end]) 
     miss∂𝑙 = gradient[1].∂𝑙 
@@ -169,8 +160,8 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
             split.rightgradient.∂𝑙 = ∂𝑙sum0 - left∂𝑙sum + miss∂𝑙
             split.rightgradient.∂²𝑙 = ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙
             for j in 1:levelcount
-                split.leftpartition.mask[j] = j == 1
-                split.rightpartition.mask[j] = j == 1 ? false : partition.mask[j]
+                split.leftpartition.mask[j] = j == (gradstart - 1)
+                split.rightpartition.mask[j] = j == (gradstart - 1) ? false : partition.mask[j]
             end
             split.leftpartition.inclmissing = false
             split.rightpartition.inclmissing = partition.inclmissing
@@ -181,8 +172,8 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
             split.rightgradient.∂𝑙 = ∂𝑙sum0 - left∂𝑙sum
             split.rightgradient.∂²𝑙 = ∂²𝑙sum0 - left∂²𝑙sum
             for j in 1:levelcount
-                split.leftpartition.mask[j] = j == 1
-                split.rightpartition.mask[j] = j == 1 ? false : partition.mask[j]
+                split.leftpartition.mask[j] = j == (gradstart - 1)
+                split.rightpartition.mask[j] = j == (gradstart - 1) ? false : partition.mask[j]
             end
             split.leftpartition.inclmissing = partition.inclmissing
             split.rightpartition.inclmissing = false
@@ -190,12 +181,12 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
         end
     end
 
-    @inbounds for i in 2:levelcount
-        if !partition.mask[i]
+    @inbounds for i in (gradstart + 1):(levelcount + 1)
+        if !partition.mask[i - 1]
             continue
         end
-        ∂𝑙 = gradient[i + gradstart - 1].∂𝑙
-        ∂²𝑙 = gradient[i + gradstart - 1].∂²𝑙
+        ∂𝑙 = gradient[i].∂𝑙
+        ∂²𝑙 = gradient[i].∂²𝑙
 
         singlelevelwithmisstotal = getloss(∂𝑙 + miss∂𝑙, ∂²𝑙 + miss∂²𝑙, λ, γ) + getloss(∂𝑙sum0 - ∂𝑙, ∂²𝑙sum0 - ∂²𝑙, λ, γ)
         singlelevelwitouthmisstotal = getloss(∂𝑙, ∂²𝑙, λ, γ) + getloss(∂𝑙sum0 - ∂𝑙 + miss∂𝑙, ∂²𝑙sum0 - ∂²𝑙 + miss∂²𝑙, λ, γ)
@@ -214,8 +205,8 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
                     split.rightgradient.∂𝑙 = ∂𝑙sum0 - left∂𝑙sum + miss∂𝑙
                     split.rightgradient.∂²𝑙 = ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙
                     for j in 1:levelcount
-                        split.leftpartition.mask[j] = j <= i ? partition.mask[j] : false
-                        split.rightpartition.mask[j] = j <= i ? false : partition.mask[j]
+                        split.leftpartition.mask[j] = j < i ? partition.mask[j] : false
+                        split.rightpartition.mask[j] = j < i ? false : partition.mask[j]
                     end
                     split.leftpartition.inclmissing = false
                     split.rightpartition.inclmissing = partition.inclmissing
@@ -226,8 +217,8 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
                     split.rightgradient.∂𝑙 = ∂𝑙sum0 - left∂𝑙sum
                     split.rightgradient.∂²𝑙 = ∂²𝑙sum0 - left∂²𝑙sum
                     for j in 1:levelcount
-                        split.leftpartition.mask[j] = j <= i ? partition.mask[j] : false
-                        split.rightpartition.mask[j] = j <= i ? false : partition.mask[j]
+                        split.leftpartition.mask[j] = j < i ? partition.mask[j] : false
+                        split.rightpartition.mask[j] = j < i ? false : partition.mask[j]
                     end
                     split.leftpartition.inclmissing = partition.inclmissing
                     split.rightpartition.inclmissing = false
@@ -243,8 +234,8 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
                     split.rightgradient.∂𝑙 = ∂𝑙sum0 - ∂𝑙 + miss∂𝑙
                     split.rightgradient.∂²𝑙 = ∂²𝑙sum0 - ∂²𝑙 + miss∂²𝑙
                     for j in 1:levelcount
-                        split.leftpartition.mask[j] = j == i
-                        split.rightpartition.mask[j] = j == i ? false : partition.mask[j]
+                        split.leftpartition.mask[j] = j == (i - 1)
+                        split.rightpartition.mask[j] = j == (i - 1) ? false : partition.mask[j]
                     end
                     split.leftpartition.inclmissing = false
                     split.rightpartition.inclmissing = partition.inclmissing
@@ -255,8 +246,8 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
                     split.rightgradient.∂𝑙 = ∂𝑙sum0 - ∂𝑙
                     split.rightgradient.∂²𝑙 = ∂²𝑙sum0 - ∂²𝑙
                     for j in 1:levelcount
-                        split.leftpartition.mask[j] = j == i
-                        split.rightpartition.mask[j] = j == i ? false : partition.mask[j]
+                        split.leftpartition.mask[j] = j == (i - 1)
+                        split.rightpartition.mask[j] = j == (i - 1) ? false : partition.mask[j]
                     end
                     split.leftpartition.inclmissing = partition.inclmissing
                     split.rightpartition.inclmissing = false
@@ -530,17 +521,44 @@ function Base.convert(::Type{List{List{TreeNode{T}}}}, tree::ConsTree{TreeNode{T
     ConsList{List{TreeNode{T}}}(ConsList{TreeNode{T}}(node), map((x -> x[1] + x[2]), zip2(left, right), List{TreeNode{T}}))
 end
 
+function prune(node::SplitNode{T}, λ::T, γ::T) where {T<:AbstractFloat}
+    sumgrad = LossGradient(node.leftgradient.∂𝑙 + node.rightgradient.∂𝑙, node.leftgradient.∂²𝑙 + node.rightgradient.∂²𝑙)
+    totloss = getloss(sumgrad.∂𝑙, sumgrad.∂²𝑙, λ, γ)
+    if node.loss < totloss
+        node::TreeNode{T}
+    else
+        LeafNode(sumgrad, false, Dict{AbstractFactor, LevelPartition}())::TreeNode{T}
+    end
+end
+
+function prune(node::LeafNode{T}, λ::T, γ::T) where {T<:AbstractFloat}
+    node
+end
+
+function getloss(tree::ConsTree{<:TreeNode{T}}, λ::T, γ::T) where {T<:AbstractFloat}
+    if isempty(tree.lefttree) && isempty(tree.righttree)
+        getloss(tree.value, λ, γ)
+    else
+        getloss(tree.lefttree, λ, γ) + getloss(tree.righttree, λ, γ)
+    end
+end
+
 function prune(tree::ConsTree{<:TreeNode{T}}, λ::T, γ::T) where {T<:AbstractFloat}
     node = tree.value
     if isempty(tree.lefttree) && isempty(tree.righttree)
-        tree
+        ConsTree{TreeNode{T}}(prune(tree.value, λ, γ))
     else
-        left = prune(tree.lefttree, λ, γ)
-        right = prune(tree.righttree, λ, γ)
-        if getloss(left, λ, γ) + getloss(right, λ, γ) < getloss(node, λ, γ)
-            ConsTree{TreeNode{T}}(node, left, right)
+        if isa(node, SplitNode{T})
+            sumgrad = LossGradient(node.leftgradient.∂𝑙 + node.rightgradient.∂𝑙, node.leftgradient.∂²𝑙 + node.rightgradient.∂²𝑙)
+            totloss = getloss(sumgrad.∂𝑙, sumgrad.∂²𝑙, λ, γ)
+            if getloss(tree, λ, γ) < totloss
+                ConsTree{TreeNode{T}}(node, prune(tree.lefttree, λ, γ), prune(tree.righttree, λ, γ))
+            else
+                leafnode = LeafNode(sumgrad, false, Dict{AbstractFactor, LevelPartition}())::TreeNode{T}
+                ConsTree{TreeNode{T}}(leafnode)
+            end
         else
-            ConsTree{TreeNode{T}}(node)
+            tree
         end
     end
 end

@@ -11,21 +11,21 @@ train_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetrain") # n
 test_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetest") 
 traintest_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetrainairlinetest") 
 
-factors = train_df.factors
-covariates = train_df.covariates
+factors = traintest_df.factors
+covariates = traintest_df.covariates
 
-distance = train_df["Distance"]
-deptime = train_df["DepTime"]
-dep_delayed_15min = train_df["dep_delayed_15min"]
+distance = traintest_df["Distance"]
+deptime = traintest_df["DepTime"]
+dep_delayed_15min = traintest_df["dep_delayed_15min"]
 
 summary(distance)
 summary(deptime)
 summary(dep_delayed_15min)
 
-label = covariate(train_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)
+label = covariate(traintest_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)
 
-deptime = factor(train_df["DepTime"], 1:2930)
-distance = factor(train_df["Distance"], 11:4962)
+deptime = factor(traintest_df["DepTime"], 1:2930)
+distance = factor(traintest_df["Distance"], 11:4962)
 
 islessf = (x, y) -> parse(x[3:end]) < parse(y[3:end])
 month = JuML.OrdinalFactor("Month", train_df["Month"], islessf)
@@ -37,19 +37,23 @@ dest = JuML.OrdinalFactor(train_df["Dest"])
 
 #factors = [[month, dayofMonth, dayOfWeek, uniqueCarrier, origin, dest]; [deptime, distance]]
 
-factors = [train_df.factors; [deptime, distance]]
+factors = [traintest_df.factors; [deptime, distance]]
 
 trainsel = (1:10100000) .<= 10000000
 testsel = (1:10100000) .> 10000000
 
-@time model = xgblogit(label, factors; η = 0.1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 100, maxdepth = 10, ordstumps = false, pruning = true, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);
+@time model = xgblogit(label, factors; selector = BoolVariate("", trainsel), η = 0.1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 100, maxdepth = 10, ordstumps = false, pruning = true, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);
 
-pred = predict(model, test_df)
-testlabel = covariate(test_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)
+#@time pred = predict(model, test_df)
+#testlabel = covariate(test_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)
 trainauc = getauc(model.pred, label;selector = trainsel)
-testauc = getauc(model.pred, label;selector = testsel)
+testauc = getauc(model.pred, label; selector = testsel)
+
+trainlogloss = getlogloss(model.pred, label;selector = trainsel)
+testlogloss = getlogloss(model.pred, label; selector = testsel)
 
 auc = getauc(pred, testlabel)
+sum(model.pred[testsel])
 
 logloss = getlogloss(pred, testlabel)
 
@@ -100,17 +104,26 @@ suppressMessages({
 library(data.table)
 library(ROCR)
 library(xgboost)
+library(MLmetrics)
 library(Matrix)
 })
 set.seed(123)
 d_train <- fread("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetrain.csv", showProgress=FALSE, stringsAsFactors=TRUE)
-X_train <- sparse.model.matrix(dep_delayed_15min ~ .-1, data = d_train)
+d_test <- fread("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetest.csv", showProgress=FALSE, stringsAsFactors=TRUE)
+
+X_train_test <- sparse.model.matrix(dep_delayed_15min ~ .-1, data = rbind(d_train, d_test))
+n1 <- nrow(d_train)
+n2 <- nrow(d_test)
+X_train <- X_train_test[1:n1,]
+X_test <- X_train_test[(n1+1):(n1+n2),]
+
 dxgb_train <- xgb.DMatrix(data = X_train, label = ifelse(d_train$dep_delayed_15min=='Y',1,0))
+
 system.time(md <- xgb.train(data = dxgb_train, objective = "binary:logistic", nround = 1, max_depth = 2, eta = 1, tree_method='exact'))
 preds = predict(md, dxgb_train)
+
 xgb.plot.tree(model = md, feature_names = colnames(dxgb_train))
 
-library(MLmetrics)
 phat <- predict(md, newdata = X_test)
 AUC(phat, testlabel)
 
