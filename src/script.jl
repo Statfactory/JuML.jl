@@ -28,21 +28,21 @@ deptime = factor(traintest_df["DepTime"], 1:2930)
 distance = factor(traintest_df["Distance"], 11:4962)
 
 islessf = (x, y) -> parse(x[3:end]) < parse(y[3:end])
-month = JuML.OrdinalFactor("Month", train_df["Month"], islessf)
-dayofMonth = JuML.OrdinalFactor("DayofMonth", train_df["DayofMonth"], islessf)
-dayOfWeek = JuML.OrdinalFactor("DayOfWeek", train_df["DayOfWeek"], islessf)
-uniqueCarrier = JuML.OrdinalFactor(train_df["UniqueCarrier"])
-origin = JuML.OrdinalFactor(train_df["Origin"])
-dest = JuML.OrdinalFactor(train_df["Dest"])
+month = JuML.OrdinalFactor("Month", traintest_df["Month"], islessf)
+dayofMonth = JuML.OrdinalFactor("DayofMonth", traintest_df["DayofMonth"], islessf)
+dayOfWeek = JuML.OrdinalFactor("DayOfWeek", traintest_df["DayOfWeek"], islessf)
+uniqueCarrier = JuML.OrdinalFactor(traintest_df["UniqueCarrier"])
+origin = JuML.OrdinalFactor(traintest_df["Origin"])
+dest = JuML.OrdinalFactor(traintest_df["Dest"])
 
-#factors = [[month, dayofMonth, dayOfWeek, uniqueCarrier, origin, dest]; [deptime, distance]]
+factors = [[month, dayofMonth, dayOfWeek, uniqueCarrier, origin, dest]; [deptime, distance]]
 
-factors = [traintest_df.factors; [deptime, distance]]
+#factors = [traintest_df.factors; [deptime, distance]]
 
 trainsel = (1:10100000) .<= 10000000
 testsel = (1:10100000) .> 10000000
 
-@time model = xgblogit(label, factors; selector = BoolVariate("", trainsel), η = 0.1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 100, maxdepth = 10, ordstumps = false, pruning = true, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);
+@time model = xgblogit(label, factors; selector = BoolVariate("", trainsel), η = 0.1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 100, maxdepth = 10, ordstumps = true, pruning = true, caching = true, usefloat64 = true, singlethread = false, slicelength = 0);
 
 #@time pred = predict(model, test_df)
 #testlabel = covariate(test_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)

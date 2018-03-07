@@ -198,12 +198,12 @@ function isanylevelnumeric(colname::AbstractString, levelfreq::Dict{String, Int6
     any([!isnull(tryparse(Float32, strip(k))) for k in keys(levelfreq)])
 end
 
-function importcsv(path::String; path2::String = "", maxobs::Integer = -1, chunksize::Integer = SLICELENGTH, nas::Vector{String} = Vector{String}(),
+function importcsv(path::String; path2::String = "", outname::String = "", maxobs::Integer = -1, chunksize::Integer = SLICELENGTH, nas::Vector{String} = Vector{String}(),
                    isnumeric::Function = isanylevelnumeric, drop::Vector{String} = Vector{String}())
     nas = Set{String}(nas)
     push!(nas, "")
     path = abspath(path)
-    outfolder = path2 == "" ? splitext(path)[1] : splitext(path)[1] * splitext(basename(path2))[1]
+    outfolder = outname == "" ? (path2 == "" ? splitext(path)[1] : splitext(path)[1] * splitext(basename(path2))[1]) : joinpath(dirname(path), outname)
     outtempfolder = joinpath(dirname(path), randstring(10))
     mkpath(outtempfolder)
     iostream = open(path)

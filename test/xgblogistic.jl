@@ -1,6 +1,6 @@
 using Compat, Compat.Test
 using JuML
-traintest_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetrainairlinetest") 
+traintest_df = DataFrame(joinpath("data", "airlinetraintest")) 
 distance = traintest_df["Distance"]
 deptime = traintest_df["DepTime"]
 label = covariate(traintest_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)
@@ -9,14 +9,31 @@ distance = factor(traintest_df["Distance"], 11:4962)
 
 factors = [traintest_df.factors; [deptime, distance]]
 
-trainsel = (1:10100000) .<= 10000000
-testsel = (1:10100000) .> 10000000
+trainsel = (1:1100000) .<= 1000000
+testsel = (1:1100000) .> 1000000
 
-model = xgblogit(label, factors; selector = BoolVariate("", trainsel), η = 0.1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 10, maxdepth = 10, ordstumps = false, pruning = true, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);
-testauc = getauc(model.pred, label; selector = testsel)
-@test testauc ≈ 0.7284 atol = 0.0001
+model1 = xgblogit(label, factors; selector = BoolVariate("", trainsel), η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 6, ordstumps = false, pruning = true, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);
+testauc1 = getauc(model1.pred, label; selector = testsel)
+@test testauc1 ≈ 0.7004898 atol = 0.0000001
+
+model2 = xgblogit(label, factors; selector = BoolVariate("", trainsel), η = 1, λ = 10.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 6, ordstumps = false, pruning = true, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);
+testauc2 = getauc(model2.pred, label; selector = testsel)
+@test testauc2 ≈ 0.7003494 atol = 0.0000001
+
+model3 = xgblogit(label, factors; selector = BoolVariate("", trainsel), η = 1, λ = 1.0, γ = 0.0, minchildweight = 1000.0, nrounds = 1, maxdepth = 6, ordstumps = false, pruning = true, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);
+testauc3 = getauc(model3.pred, label; selector = testsel)
+@test testauc3 ≈ 0.7002925 atol = 0.0000001
+
+model4 = xgblogit(label, factors; selector = BoolVariate("", trainsel), η = 0.1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 10, maxdepth = 10, ordstumps = false, pruning = true, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);
+testauc4 = getauc(model4.pred, label; selector = testsel)
+@test testauc4 ≈ 0.7255029 atol = 0.0002
 
 # XGBoost R script to compare:
+# Data:
+# wget https://s3.amazonaws.com/benchm-ml--main/train-1m.csv
+# wget https://s3.amazonaws.com/benchm-ml--main/train-10m.csv
+# wget https://s3.amazonaws.com/benchm-ml--main/test.csv
+
 # suppressMessages({
 # library(data.table)
 # library(ROCR)
@@ -24,7 +41,7 @@ testauc = getauc(model.pred, label; selector = testsel)
 # library(MLmetrics)
 # library(Matrix)
 # })
-# d_train <- fread("airlinetrain.csv", showProgress=FALSE, stringsAsFactors=TRUE)
+# d_train <- fread("airlinetrain1m.csv", showProgress=FALSE, stringsAsFactors=TRUE)
 # d_test <- fread("airlinetest.csv", showProgress=FALSE, stringsAsFactors=TRUE)
 # X_train_test <- sparse.model.matrix(dep_delayed_15min ~ .-1, data = rbind(d_train, d_test))
 # n1 <- nrow(d_train)
