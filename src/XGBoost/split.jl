@@ -3,18 +3,18 @@ function getweight(gradient::LossGradient{T}, λ::T) where {T<:AbstractFloat}
     -gradient.∂𝑙 / (gradient.∂²𝑙 + λ)
 end
 
-function getloss(∂𝑙::T, ∂²𝑙::T, λ::T, γ::T) where {T<:AbstractFloat} 
+function getloss(∂𝑙::T, ∂²𝑙::T, λ::T) where {T<:AbstractFloat} 
     a::T = -0.5
-    a * ∂𝑙 * ∂𝑙 / (∂²𝑙 + λ) + γ
+    a * ∂𝑙 * ∂𝑙 / (∂²𝑙 + λ)
 end
 
-function getloss(node::LeafNode{T}, λ::T, γ::T) where {T<:AbstractFloat} 
+function getloss(node::LeafNode{T}, λ::T) where {T<:AbstractFloat} 
     ∂𝑙 = node.gradient.∂𝑙
     ∂²𝑙 = node.gradient.∂²𝑙
-    getloss(∂𝑙, ∂²𝑙, λ, γ)
+    getloss(∂𝑙, ∂²𝑙, λ)
 end
 
-function getloss(node::SplitNode{T}, λ::T, γ::T) where {T<:AbstractFloat} 
+function getloss(node::SplitNode{T}, λ::T) where {T<:AbstractFloat} 
     node.loss
 end
 
@@ -133,7 +133,7 @@ function splitnodeids!(nodeids::Vector{<:Integer}, layer::TreeLayer{T}, slicelen
 end
 
 function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradient::Vector{LossGradient{T}},
-                      λ::T, γ::T, min∂²𝑙::T, ordstumps::Bool) where {T<:AbstractFloat}
+                      λ::T, min∂²𝑙::T, ordstumps::Bool) where {T<:AbstractFloat}
 
     isord = isordinal(factor)
     gradstart = findfirst(partition.mask, true) + 1
@@ -141,7 +141,7 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
     ∂²𝑙sum0 = sum((grad -> grad.∂²𝑙), gradient[gradstart:end]) 
     miss∂𝑙 = gradient[1].∂𝑙 
     miss∂²𝑙 = gradient[1].∂²𝑙
-    bestloss = typemax(T) #getloss(∂𝑙sum0 + miss∂𝑙, ∂²𝑙sum0 + miss∂²𝑙, λ, γ)
+    bestloss = typemax(T) 
     levelcount = length(partition.mask)
     split = SplitNode{T}(factor, LevelPartition(copy(partition.mask), partition.inclmissing), LevelPartition(zeros(Bool, levelcount), !partition.inclmissing),
                          LossGradient{T}(∂𝑙sum0 + miss∂𝑙, ∂²𝑙sum0 + miss∂²𝑙), LossGradient{T}(zero(T), zero(T)),
@@ -150,8 +150,8 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
     left∂𝑙sum = gradient[gradstart].∂𝑙
     left∂²𝑙sum = gradient[gradstart].∂²𝑙
 
-    firstlevelwithmiss = getloss(left∂𝑙sum + miss∂𝑙, left∂²𝑙sum + miss∂²𝑙, λ, γ) + getloss(∂𝑙sum0 - left∂𝑙sum, ∂²𝑙sum0 - left∂²𝑙sum, λ, γ)
-    firstlevelwitouthmiss = getloss(left∂𝑙sum, left∂²𝑙sum, λ, γ) + getloss(∂𝑙sum0 - left∂𝑙sum + miss∂𝑙, ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙, λ, γ)
+    firstlevelwithmiss = getloss(left∂𝑙sum + miss∂𝑙, left∂²𝑙sum + miss∂²𝑙, λ) + getloss(∂𝑙sum0 - left∂𝑙sum, ∂²𝑙sum0 - left∂²𝑙sum, λ)
+    firstlevelwitouthmiss = getloss(left∂𝑙sum, left∂²𝑙sum, λ) + getloss(∂𝑙sum0 - left∂𝑙sum + miss∂𝑙, ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙, λ)
 
     if firstlevelwithmiss < bestloss && (left∂²𝑙sum + miss∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - left∂²𝑙sum >= min∂²𝑙)
         if firstlevelwitouthmiss < firstlevelwithmiss && (left∂²𝑙sum >= min∂²𝑙) && (∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙 >= min∂²𝑙)
@@ -188,14 +188,14 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
         ∂𝑙 = gradient[i].∂𝑙
         ∂²𝑙 = gradient[i].∂²𝑙
 
-        singlelevelwithmisstotal = getloss(∂𝑙 + miss∂𝑙, ∂²𝑙 + miss∂²𝑙, λ, γ) + getloss(∂𝑙sum0 - ∂𝑙, ∂²𝑙sum0 - ∂²𝑙, λ, γ)
-        singlelevelwitouthmisstotal = getloss(∂𝑙, ∂²𝑙, λ, γ) + getloss(∂𝑙sum0 - ∂𝑙 + miss∂𝑙, ∂²𝑙sum0 - ∂²𝑙 + miss∂²𝑙, λ, γ)
+        singlelevelwithmisstotal = getloss(∂𝑙 + miss∂𝑙, ∂²𝑙 + miss∂²𝑙, λ) + getloss(∂𝑙sum0 - ∂𝑙, ∂²𝑙sum0 - ∂²𝑙, λ)
+        singlelevelwitouthmisstotal = getloss(∂𝑙, ∂²𝑙, λ) + getloss(∂𝑙sum0 - ∂𝑙 + miss∂𝑙, ∂²𝑙sum0 - ∂²𝑙 + miss∂²𝑙, λ)
 
         left∂𝑙sum += ∂𝑙
         left∂²𝑙sum += ∂²𝑙
 
-        leftwithmisstotal = getloss(left∂𝑙sum + miss∂𝑙, left∂²𝑙sum + miss∂²𝑙, λ, γ) + getloss(∂𝑙sum0 - left∂𝑙sum, ∂²𝑙sum0 - left∂²𝑙sum, λ, γ)
-        leftwithoutmisstotal = getloss(left∂𝑙sum, left∂²𝑙sum, λ, γ) + getloss(∂𝑙sum0 - left∂𝑙sum + miss∂𝑙, ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙, λ, γ)
+        leftwithmisstotal = getloss(left∂𝑙sum + miss∂𝑙, left∂²𝑙sum + miss∂²𝑙, λ) + getloss(∂𝑙sum0 - left∂𝑙sum, ∂²𝑙sum0 - left∂²𝑙sum, λ)
+        leftwithoutmisstotal = getloss(left∂𝑙sum, left∂²𝑙sum, λ) + getloss(∂𝑙sum0 - left∂𝑙sum + miss∂𝑙, ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙, λ)
 
         if isord
             if leftwithmisstotal < split.loss && (left∂²𝑙sum + miss∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - left∂²𝑙sum >= min∂²𝑙)
@@ -272,7 +272,7 @@ function getnewsplit(gradient::Vector{Vector{LossGradient{T}}}, nodes::Vector{Tr
             if nodes[i].cansplit
                 partition = nodes[i].partitions[factor]
                 if count(partition.mask) > 1
-                    newsplit[i] = getsplitnode(factor, nodes[i].partitions[factor],  grad, λ, γ, min∂²𝑙, ordstumps)
+                    newsplit[i] = getsplitnode(factor, nodes[i].partitions[factor],  grad, λ, min∂²𝑙, ordstumps)
                 else
                     newsplit[i] = Nullable{SplitNode{T}}()
                 end
@@ -286,7 +286,7 @@ function getnewsplit(gradient::Vector{Vector{LossGradient{T}}}, nodes::Vector{Tr
             if nodes[i].cansplit
                 partition = nodes[i].partitions[factor]
                 if count(partition.mask) > 1
-                    newsplit[i] = getsplitnode(factor, nodes[i].partitions[factor],  grad, λ, γ, min∂²𝑙, ordstumps)
+                    newsplit[i] = getsplitnode(factor, nodes[i].partitions[factor],  grad, λ, min∂²𝑙, ordstumps)
                 else
                     newsplit[i] = Nullable{SplitNode{T}}()
                 end
@@ -311,10 +311,7 @@ function findbestsplit(state::TreeGrowState{T}) where {T<:AbstractFloat}
 
         res = Vector{TreeNode{T}}(length(newsplit))
         @inbounds for i in 1:length(newsplit)
-
-
-             if !isnull(newsplit[i]) &&
-                ((state.pruning && isa(currsplit[i], LeafNode{T})) || get(newsplit[i]).loss < getloss(currsplit[i], state.λ, state.γ))
+             if !isnull(newsplit[i]) && get(newsplit[i]).loss < getloss(currsplit[i], state.λ)
                 res[i] = get(newsplit[i]) 
              else
                 res[i] = currsplit[i] 
@@ -523,8 +520,8 @@ end
 
 function prune(node::SplitNode{T}, λ::T, γ::T) where {T<:AbstractFloat}
     sumgrad = LossGradient(node.leftgradient.∂𝑙 + node.rightgradient.∂𝑙, node.leftgradient.∂²𝑙 + node.rightgradient.∂²𝑙)
-    totloss = getloss(sumgrad.∂𝑙, sumgrad.∂²𝑙, λ, γ)
-    if node.loss < totloss
+    totloss = getloss(sumgrad.∂𝑙, sumgrad.∂²𝑙, λ)
+    if totloss - node.loss > γ * T(0.5)
         node::TreeNode{T}
     else
         LeafNode(sumgrad, false, Dict{AbstractFactor, LevelPartition}())::TreeNode{T}
@@ -535,30 +532,18 @@ function prune(node::LeafNode{T}, λ::T, γ::T) where {T<:AbstractFloat}
     node
 end
 
-function getloss(tree::ConsTree{<:TreeNode{T}}, λ::T, γ::T) where {T<:AbstractFloat}
-    if isempty(tree.lefttree) && isempty(tree.righttree)
-        getloss(tree.value, λ, γ)
-    else
-        getloss(tree.lefttree, λ, γ) + getloss(tree.righttree, λ, γ)
-    end
-end
-
 function prune(tree::ConsTree{<:TreeNode{T}}, λ::T, γ::T) where {T<:AbstractFloat}
     node = tree.value
     if isempty(tree.lefttree) && isempty(tree.righttree)
-        ConsTree{TreeNode{T}}(prune(tree.value, λ, γ))
+        ConsTree{TreeNode{T}}(prune(node, λ, γ))
     else
-        if isa(node, SplitNode{T})
-            sumgrad = LossGradient(node.leftgradient.∂𝑙 + node.rightgradient.∂𝑙, node.leftgradient.∂²𝑙 + node.rightgradient.∂²𝑙)
-            totloss = getloss(sumgrad.∂𝑙, sumgrad.∂²𝑙, λ, γ)
-            if getloss(tree, λ, γ) < totloss
-                ConsTree{TreeNode{T}}(node, prune(tree.lefttree, λ, γ), prune(tree.righttree, λ, γ))
-            else
-                leafnode = LeafNode(sumgrad, false, Dict{AbstractFactor, LevelPartition}())::TreeNode{T}
-                ConsTree{TreeNode{T}}(leafnode)
-            end
+        prunednode = prune(node, λ, γ)
+        if isa(prunednode, LeafNode{T})
+            ConsTree{TreeNode{T}}(prunednode)
         else
-            tree
+            left = prune(tree.lefttree, λ, γ)
+            right = prune(tree.righttree, λ, γ)
+            ConsTree{TreeNode{T}}(prunednode, left, right)
         end
     end
 end

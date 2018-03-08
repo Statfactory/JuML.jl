@@ -24,9 +24,13 @@ model3 = xgblogit(label, factors; selector = BoolVariate("", trainsel), η = 1, 
 testauc3 = getauc(model3.pred, label; selector = testsel)
 @test testauc3 ≈ 0.7002925 atol = 0.0000001
 
-model4 = xgblogit(label, factors; selector = BoolVariate("", trainsel), η = 0.1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 10, maxdepth = 10, ordstumps = false, pruning = true, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);
+model4 = xgblogit(label, factors; selector = BoolVariate("", trainsel), η = 1, λ = 1.0, γ = 500.0, minchildweight = 1.0, nrounds = 1, maxdepth = 4, ordstumps = false, pruning = true, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);
 testauc4 = getauc(model4.pred, label; selector = testsel)
-@test testauc4 ≈ 0.7255029 atol = 0.0002
+@test testauc4 ≈ 0.6888606 atol = 0.0000001
+
+model5 = xgblogit(label, factors; selector = BoolVariate("", trainsel), η = 0.1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 10, maxdepth = 10, ordstumps = false, pruning = true, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);
+testauc5 = getauc(model5.pred, label; selector = testsel)
+@test testauc5 ≈ 0.7255029 atol = 0.0002
 
 # XGBoost R script to compare:
 # Data:
