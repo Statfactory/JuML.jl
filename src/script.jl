@@ -79,6 +79,33 @@ testdf = DataFrame("src\\Data\\agaricus_test"; preload = true)
 
 df = DataFrame("src\\Data\\agaricus"; preload = true)
 
+levelmap = Dict{SubString{String}, Int64}()
+
+line = "as, cd, er"
+v = split(line, ",")
+colnames = map((c -> strip(strip(c), ['"'])), v)
+
+
+cols = Set{SubString{String}}(colnames)
+line2 = "as, cd, er"
+v2 = split(line2, ",")
+colnames2 = map((c -> strip(strip(c), ['"'])), v2)
+
+levelcount = length(levelmap)
+levelindex = get(levelmap, colnames[2], levelcount)
+
+levelmap[colnames2[2]] = levelindex
+levelmap
+colnames[2]
+
+colnames2[1] in cols
+
+v3 = "as"
+v3 in cols
+
+arr = zeros(UInt8, 10)
+arr2 = convert(Vector{UInt16}, arr)
+
 #class = df["class"]
 #summary(class)
 

@@ -45,13 +45,3 @@ function Base.broadcast(f, basecovariate::AbstractCovariate{S}) where {S<:Abstra
         TransCovBoolVariate{S}("$(f)($(getname(basecovariate)))", basecovariate, f) 
     end
 end
-
-# function Base.broadcast(f, basecovariate::AbstractCovariate{S}, a::Real) where {S<:AbstractFloat}
-#     a = S(a)
-#     TransCovariate("$(getname(basecovariate))$(f)$(a)", basecovariate, x -> f(x, a))
-# end
-
-# function Base.broadcast(f, a::Real, basecovariate::AbstractCovariate{S}) where {S<:AbstractFloat} 
-#     a = S(a)
-#     TransCovariate("$(a)$(f)$(getname(basecovariate))", basecovariate, x -> f(a, x))
-# end

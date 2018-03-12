@@ -10,11 +10,14 @@ abstract type AbstractCovariate{T<:AbstractFloat} <: StatVariate end
 
 abstract type AbstractBoolVariate <: StatVariate end
 
+abstract type AbstractDateTimeVariate <: StatVariate end
+
 struct DataFrame <: AbstractDataFrame
     length::Int64
     factors::AbstractVector{<:AbstractFactor}
     covariates::AbstractVector{<:AbstractCovariate}
     boolvariates::AbstractVector{<:AbstractBoolVariate}
+    datetimevariates::AbstractVector{<:AbstractDateTimeVariate}
 end
 
 mutable struct CovariateStats
@@ -27,6 +30,14 @@ mutable struct CovariateStats
     std::Float64
     min::Float64
     max::Float64
+end
+
+mutable struct DateTimeVariateStats
+    obscount::Int64
+    nancount::Int64
+    nanpcnt::Float64
+    min::Int64
+    max::Int64
 end
 
 mutable struct LevelStats
@@ -54,6 +65,8 @@ getname(covariate::AbstractCovariate{T}) where {T<:AbstractFloat} = covariate.na
 
 getname(boolvar::AbstractBoolVariate) = boolvar.name
 
+getname(datetimevar::AbstractDateTimeVariate) = datetimevar.name
+
 function widenfactors(factors::Vector{<:AbstractFactor})
     if all(map((factor -> issubtype(typeof(factor), AbstractFactor{UInt8})), factors))
         factors
@@ -73,6 +86,7 @@ function DataFrame(path::String; preload::Bool = true)
     header = JSON.parse(headerjson)
     factors = Vector{AbstractFactor}()
     covariates = Vector{AbstractCovariate}()
+    dtvariates = Vector{AbstractDateTimeVariate}()
     datacols = header["datacolumns"]
     len = 0
     for datacol in datacols
@@ -86,6 +100,14 @@ function DataFrame(path::String; preload::Bool = true)
                 push!(covariates, Covariate{Float32}(name, len, datpath))
             else
                 push!(covariates, FileCovariate{Float32}(name, len, datpath))
+            end
+        end
+
+        if datatype == "DateTime"
+            if preload
+                push!(dtvariates, DateTimeVariate(name, len, datpath))
+            else
+                push!(dtvariates, FileDateTimeVariate(name, len, datpath))
             end
         end
 
@@ -125,7 +147,7 @@ function DataFrame(path::String; preload::Bool = true)
             end       
         end
     end
-    DataFrame(len, factors, covariates, AbstractBoolVariate[])
+    DataFrame(len, factors, covariates, AbstractBoolVariate[], dtvariates)
 end
 
 function Base.getindex(df::AbstractDataFrame, name::String)
@@ -137,6 +159,11 @@ function Base.getindex(df::AbstractDataFrame, name::String)
     for cov in df.covariates
         if getname(cov) == name
             return cov
+        end
+    end
+    for dt in df.datetimevariates
+        if getname(dt) == name
+            return dt
         end
     end
 end
@@ -225,6 +252,105 @@ function getstats(covariate::AbstractCovariate{T}) where {T<:AbstractFloat}
     stats
 end
 
+function getstats(factor::AbstractFactor{T}, covariate::AbstractCovariate{S}) where {T<:Unsigned} where {S<:AbstractFloat}
+    len = length(covariate)
+    levelcount = length(getlevels(factor))
+    levelsinit = [CovariateStats(0, 0, NaN64, NaN64, NaN64, NaN64, NaN64, NaN64, NaN64) for i in 1:levelcount]
+    missinit = CovariateStats(0, 0, NaN64, NaN64, NaN64, NaN64, NaN64, NaN64, NaN64)
+    covslices = slice(covariate, 1, len, SLICELENGTH)
+    factorslices = slice(factor, 1, len, SLICELENGTH)
+    zipslices = zip2(factorslices, covslices)
+    missacc, levelacc = fold((missinit, levelsinit), zipslices) do acc, slice
+        missstat, levelsstat = acc
+        fslice, cslice = slice
+        for (i, levelindex) in enumerate(fslice)
+            v = cslice[i]
+            if levelindex == zero(T)
+                missstat.obscount += 1
+                if isnan(v)
+                    missstat.nancount += 1
+                else
+                    if isnan(missstat.sum)
+                        missstat.sum = v
+                        missstat.sum2 = v * v
+                        missstat.min = v
+                        missstat.max = v
+                    else
+                        missstat.sum += v
+                        missstat.sum2 += v * v
+                        if v < missstat.min
+                            missstat.min = v
+                        end
+                        if v > missstat.max
+                            missstat.max = v
+                        end
+                    end
+                end
+            else
+                levelsstat[levelindex].obscount += 1
+                if isnan(v)
+                    levelsstat[levelindex].nancount += 1
+                else
+                    if isnan(levelsstat[levelindex].sum)
+                        levelsstat[levelindex].sum = v
+                        levelsstat[levelindex].sum2 = v * v
+                        levelsstat[levelindex].min = v
+                        levelsstat[levelindex].max = v
+                    else
+                        levelsstat[levelindex].sum += v
+                        levelsstat[levelindex].sum2 += v * v
+                        if v < levelsstat[levelindex].min
+                            levelsstat[levelindex].min = v
+                        end
+                        if v > levelsstat[levelindex].max
+                            levelsstat[levelindex].max = v
+                        end
+                    end
+                end
+            end
+        end
+        acc
+    end
+    missacc.nanpcnt = 100.0 * missacc.nancount / missacc.obscount
+    missacc.mean = missacc.sum / (missacc.obscount - missacc.nancount)
+    missacc.std = sqrt(((missacc.sum2 - missacc.sum * missacc.sum / (missacc.obscount - missacc.nancount)) / (missacc.obscount - missacc.nancount - 1)))
+    for i in 1:levelcount
+        levelacc[i].nanpcnt = 100.0 * levelacc[i].nancount / levelacc[i].obscount
+        levelacc[i].mean = levelacc[i].sum / (levelacc[i].obscount - levelacc[i].nancount)
+        levelacc[i].std = sqrt(((levelacc[i].sum2 - levelacc[i].sum * levelacc[i].sum / (levelacc[i].obscount - levelacc[i].nancount)) / (levelacc[i].obscount - levelacc[i].nancount - 1)))
+    end
+    missacc, levelacc
+end
+
+function getstats(dtvariate::AbstractDateTimeVariate) 
+    len = length(dtvariate)
+    init = DateTimeVariateStats(0, 0, NaN64, 0, 0)
+    slices = slice(dtvariate, 1, len, SLICELENGTH)
+    stats = fold(init, slices) do s, slice
+        for v in slice
+            if v == zero(Int64)
+                s.nancount += 1
+            else
+                if s.min == zero(Int64)
+                    s.min = v
+                    s.max = v
+                else
+                    if v < s.min
+                        s.min = v
+                    end
+                    if v > s.max
+                        s.max = v
+                    end
+                end
+            end
+        end
+        s
+    end
+    stats.obscount = len
+    stats.nanpcnt = 100.0 * stats.nancount / len
+    stats
+end
+
 function Base.summary(covariate::AbstractCovariate{T}) where {T<:AbstractFloat}
     io = IOBuffer()
     stats = getstats(covariate)
@@ -235,6 +361,17 @@ function Base.summary(covariate::AbstractCovariate{T}) where {T<:AbstractFloat}
     println(io, @sprintf("%-15s%12G", "Max", stats.max))
     println(io, @sprintf("%-15s%12G", "Mean", stats.mean))
     println(io, @sprintf("%-15s%12G", "Std", stats.std))
+    print(String(take!(io)))
+end
+
+function Base.summary(dtvariate::AbstractDateTimeVariate) 
+    io = IOBuffer()
+    stats = getstats(dtvariate)
+    println(io, @sprintf("%-15s%12d", "Obs Count", stats.obscount))
+    println(io, @sprintf("%-15s%12d", "NaN Freq", stats.nancount))
+    println(io, @sprintf("%-15s%12G", "NaN %", stats.nanpcnt))
+    println(io, @sprintf("%-15s%12s", "Min", Dates.format(Dates.epochms2datetime(stats.min), "yyyy-mm-ddTHH:MM:SS")))
+    println(io, @sprintf("%-15s%12s", "Max", Dates.format(Dates.epochms2datetime(stats.max), "yyyy-mm-ddTHH:MM:SS")))
     print(String(take!(io)))
 end
 
@@ -264,6 +401,19 @@ function Base.show(io::IO, boolvar::AbstractBoolVariate)
     end
 end
 
+function Base.show(io::IO, datetimevar::AbstractDateTimeVariate) 
+    slices = slice(datetimevar, 1, HEADLENGTH, HEADLENGTH)
+    slice1, _ = tryread(slices)
+    len = length(datetimevar)
+    if !isnull(slice1)
+        datahead = join([v == zero(Int64) ? MISSINGLEVEL : string(Dates.epochms2datetime(v)) for v in get(slice1)], " ")
+        dataend = len > HEADLENGTH ? "  ..." : ""
+        println(io, "DateTimeVar $(getname(datetimevar)) with $(len) obs: $(datahead)$dataend")
+    else
+        println(io, "DateTimeVar $(getname(datetimevar)) with $(len) obs")
+    end
+end
+
 function Base.show(io::IO, factor::AbstractFactor{T}) where {T<:Unsigned}
     slices = slice(factor, 1, HEADLENGTH, HEADLENGTH)
     slice1, _ = tryread(slices)
@@ -284,7 +434,60 @@ function Base.convert(::Type{Vector{T}}, covariate::AbstractCovariate{T}) where 
     get(v)
 end
 
+function Base.convert(::Type{BitArray}, boolvariate::AbstractBoolVariate) 
+    v, _ = tryread(slice(boolvariate, 1, length(boolvariate), length(boolvariate)))
+    get(v)
+end
+
 function isordinal(factor::AbstractFactor{T}) where {T<:Unsigned}
     false
  end
+
+function slicestring(factor::AbstractFactor{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:Unsigned}
+    slicelength = verifyslicelength(fromobs, toobs, slicelength)
+    levels = getlevels(factor)
+    f = (i::T) -> i == zero(T) ? "" : levels[i]
+    slices = slice(factor, fromobs, toobs, slicelength)
+    mapslice(f, slices, slicelength, String)
+end
+
+function slicestring(covariate::AbstractCovariate{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:AbstractFloat}
+    slicelength = verifyslicelength(fromobs, toobs, slicelength)
+    f = (x::T) -> isnan(x) ? "" : @sprintf("%G", x)
+    slices = slice(covariate, fromobs, toobs, slicelength)
+    mapslice(f, slices, slicelength, String)
+end
+
+function tocsv(path::String, dataframe::AbstractDataFrame)
+    path = abspath(path)
+    iostream = open(path, "w")
+    factors = dataframe.factors
+    covariates = dataframe.covariates
+    len = length(dataframe)
+    fslices = [slicestring(f, 1, len, SLICELENGTH) for f in factors]
+    covslices = [slicestring(c, 1, len, SLICELENGTH) for c in covariates]
+    strslices = begin
+        if length(factors) == 0
+            zipn(covslices)
+        elseif length(covariates) == 0
+            zipn(fslices)
+        else
+            zipn([fslices; covslices])
+        end
+    end
+    ncol = length(factors) + length(covariates)
+    colnames = Vector{}(String)
+    foreach((f -> push!(colnames, getname(f))), factors) 
+    foreach((c -> push!(colnames, getname(c))), covariates) 
+    headersline = join(colnames, ",") * "\r\n"
+    write(iostream, headersline)
+    foreach(strslices) do x
+        slicelen = length(x[1])
+        for i in 1:slicelen
+            line = join([x[j][i] for j in 1:ncol], ",") * "\r\n"
+            write(iostream, line)
+        end
+    end
+    close(iostream)
+end
 

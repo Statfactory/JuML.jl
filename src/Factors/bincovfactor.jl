@@ -9,8 +9,8 @@ Base.length(var::BinCovFactor{T}) where {T<:Unsigned} = length(var.covariate)
 
 function BinCovFactor(name::String, bins::AbstractVector{T}, covariate::AbstractCovariate{S}) where {T<:Real} where {S<:AbstractFloat}
     bins = issorted(bins) ? bins : sort(bins)
-    levelcount = length(bins)
-    levels = [@sprintf("[%G,%G%s", bins[i], bins[i + 1], i == levelcount - 1 ? "]" : ")") for i in 1:levelcount - 1]
+    levelcount = length(bins) - 1
+    levels = [@sprintf("[%G,%G%s", bins[i], bins[i + 1], i == levelcount ? "]" : ")") for i in 1:levelcount]
     if levelcount <= typemax(UInt8)
         BinCovFactor{UInt8}(name, levels, bins, covariate)
     elseif levelcount <= typemax(UInt16)
@@ -30,10 +30,10 @@ function slice(factor::BinCovFactor{T}, fromobs::Integer, toobs::Integer, slicel
     z = bins[length(bins)]
     f = (x -> 
             begin
-                if x == z
+                if x == z 
                     return binlenm1
-                elseif x > z
-                    return 0
+                elseif x > z || isnan(x)
+                    return zero(T)
                 else
                     i = searchsortedlast(bins, x)
                     return convert(T, i)

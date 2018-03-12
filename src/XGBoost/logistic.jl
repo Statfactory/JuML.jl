@@ -48,15 +48,21 @@ function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
     fm, trees = fold((f0, Vector{XGTree}()), Seq(1:nrounds)) do x, m
         fm, trees = x
         ŷ = Covariate(sigmoid.(fm)) 
-        ∂𝑙 = length(selector) == 0 ? Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) |> cache : ifelse(selector, Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙), zerocov) |> cache
-        ∂²𝑙 = length(selector) == 0 ? TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙) |> cache : ifelse(selector, TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙), zerocov) |> cache
+
+        #∂𝑙 = length(selector) == 0 ? Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) : ifelse(selector, Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙), zerocov)
+        #∂²𝑙 = length(selector) == 0 ? TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙) : ifelse(selector, TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙), zerocov)
+
+        f = caching ? cache : identity
+        ∂𝑙 = length(selector) == 0 ? Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) |> f : ifelse(selector, Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙), zerocov) |> f
+        ∂²𝑙 = length(selector) == 0 ? TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙) |> f : ifelse(selector, TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙), zerocov) |> f
+        
         tree, predraw = growtree(factors, ∂𝑙, ∂²𝑙, maxdepth, λ, γ, minchildweight, ordstumps, pruning, slicelength, singlethread)
         fm .= muladd.(η, predraw, fm)
         push!(trees, tree)
         (fm, trees)
     end
-    pred = sigmoid.(fm)
-    XGModel{T}(trees, λ, γ, η, minchildweight, maxdepth, pred)
+    fm .= sigmoid.(fm)
+    XGModel{T}(trees, λ, γ, η, minchildweight, maxdepth, fm)
 end
 
 function cvxgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor}, nfolds::Integer;
@@ -119,20 +125,54 @@ function predict(model::XGModel{T}, dataframe::AbstractDataFrame) where {T<:Abst
         predraw = predict(tree, dataframe)
         f0 .= muladd.(η, predraw, f0)
     end
-    sigmoid.(f0)
+    f0 .= sigmoid.(f0)
+    f0
 end
 
-function getauc(pred::Vector{T}, label::AbstractCovariate{S}; selector::BitArray{1} = BitArray{1}()) where {T <: AbstractFloat} where {S <: AbstractFloat}
+function getauc(pred::Vector{T}, label::AbstractCovariate{S}; selector::AbstractVector{Bool} = BitArray{1}()) where {T <: AbstractFloat} where {S <: AbstractFloat}
     label = convert(Vector{S}, label)
     label = length(selector) == 0 ? label : label[selector]
-    pred = length(selector) == 0 ? pred : pred[selector]
-    perm = sortperm(pred; rev = true)
+    pred = length(selector) == 0 ? copy(pred) : pred[selector]
+    uniqcount = Dict{T, Int64}()
+    for i in 1:length(pred)
+        v = pred[i]
+        if v in keys(uniqcount)
+            uniqcount[v] += 1
+        else
+            uniqcount[v] = 1
+        end
+    end
+    uniqpred = collect(keys(uniqcount))
+    sort!(uniqpred; rev = true)
+    ucount = map((v -> uniqcount[v]), uniqpred)
+    uniqcountcum = cumsum(ucount) - ucount
+    perm = Vector{Int64}(length(pred))
+    lenuniq = length(uniqpred)
+    used = zeros(Int64, lenuniq)
+    for i in 1:length(pred)
+        v = pred[i]
+        k = searchsortedfirst(uniqpred, v; rev = true) 
+        j = uniqcountcum[k] + used[k] + 1
+        perm[j] = i
+        used[k] += 1
+    end
+
+    offset = 1
+    for i in 1:length(uniqpred)
+        v = uniqpred[i]
+        cnt = uniqcount[v]
+        for j in 1:cnt
+            pred[offset] = v
+            offset += 1
+        end
+    end
+
     len = length(label)
     sumlabel = sum(label)
-    cumlabel = cumsum(label[perm])
+    permute!(label, perm)
+    cumlabel = cumsum!(label, label)
     x = ones(S, len)
     cumcount = cumsum!(x, x)
-    pred = pred[perm]
     diff = view(pred, 2:len) .- view(pred, 1:(len - 1))
     isstep = diff .!= zero(T)
     push!(isstep, true)
@@ -149,7 +189,7 @@ function getauc(pred::Vector{T}, label::AbstractCovariate{S}; selector::BitArray
     0.5 * (sum((tpr1 .+ tpr2) .* (fpr2 .- fpr1)) + area0)
 end
 
-function getlogloss(pred::Vector{T}, label::AbstractCovariate{S}; selector::BitArray{1} = BitArray{1}()) where {T <: AbstractFloat} where {S <: AbstractFloat}
+function getlogloss(pred::Vector{T}, label::AbstractCovariate{S}; selector::AbstractVector{Bool} = BitArray{1}()) where {T <: AbstractFloat} where {S <: AbstractFloat}
     label = convert(Vector{S}, label)
     label::Vector{S} = length(selector) == 0 ? label : label[selector]
     pred::Vector{T} = length(selector) == 0 ? pred : pred[selector]

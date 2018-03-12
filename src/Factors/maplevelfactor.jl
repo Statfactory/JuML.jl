@@ -11,12 +11,12 @@ Base.length(var::MapLevelFactor) = length(var.basefactor)
 function MapLevelFactor(name::String, basefactor::AbstractFactor{S}, transform::Function) where {S<:Unsigned}
     baselevels = getlevels(basefactor)
     levelmap = Dict{String, S}()
-    newlevels = Vector{S}()
+    newlevels = Vector{String}()
     newindex = Vector{S}(length(baselevels) + 1)
     for (index, level) in enumerate(baselevels)
         newlevel = transform(level)
         if newlevel == MISSINGLEVEL
-            newindex[index + 1] = 0
+            newindex[index + 1] = zero(S)
         else
             levelcount = length(levelmap)
             levelindex = get(levelmap, newlevel, levelcount + 1)
@@ -24,6 +24,8 @@ function MapLevelFactor(name::String, basefactor::AbstractFactor{S}, transform::
                 levelmap[newlevel] = levelindex
                 newindex[index + 1] = levelindex
                 push!(newlevels, newlevel)
+            else
+                newindex[index + 1] = levelindex
             end
         end
     end
