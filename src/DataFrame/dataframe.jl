@@ -453,7 +453,7 @@ end
 
 function slicestring(covariate::AbstractCovariate{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:AbstractFloat}
     slicelength = verifyslicelength(fromobs, toobs, slicelength)
-    f = (x::T) -> isnan(x) ? "" : @sprintf("%G", x)
+    f = (x::T) -> isnan(x) ? "" : (x == floor(x) ? @sprintf("%D", x) : @sprintf("%F", x))
     slices = slice(covariate, fromobs, toobs, slicelength)
     mapslice(f, slices, slicelength, String)
 end
@@ -476,7 +476,7 @@ function tocsv(path::String, dataframe::AbstractDataFrame)
         end
     end
     ncol = length(factors) + length(covariates)
-    colnames = Vector{}(String)
+    colnames = Vector{String}()
     foreach((f -> push!(colnames, getname(f))), factors) 
     foreach((c -> push!(colnames, getname(c))), covariates) 
     headersline = join(colnames, ",") * "\r\n"

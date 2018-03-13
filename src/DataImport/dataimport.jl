@@ -257,11 +257,11 @@ function importdata(colimporters::Vector{ColumnImporter}, datalines::Vector{Vect
     colimporters
 end
 
-function isanylevelnumeric(colname::AbstractString, levelfreq::Dict{String, Int64})
+function isanylevelnumeric(colname::AbstractString, levelfreq::Dict{SubString{String}, Int64})
     any([!isnull(tryparse(Float32, strip(k))) for k in keys(levelfreq)])
 end
 
-function isnotdatetime(colname::AbstractString, levelfreq::Dict{String, Int64})
+function isnotdatetime(colname::AbstractString, levelfreq::Dict{SubString{String}, Int64})
     false, ""
 end
 
