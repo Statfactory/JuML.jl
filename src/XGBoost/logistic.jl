@@ -132,9 +132,12 @@ end
 function getauc(pred::Vector{T}, label::AbstractCovariate{S}; selector::AbstractVector{Bool} = BitArray{1}()) where {T <: AbstractFloat} where {S <: AbstractFloat}
     label = convert(Vector{S}, label)
     label = length(selector) == 0 ? label : label[selector]
-    pred = length(selector) == 0 ? copy(pred) : pred[selector]
+    len = length(selector) == 0 ? length(pred) : count(selector)
     uniqcount = Dict{T, Int64}()
     for i in 1:length(pred)
+        if !selector[i]
+            continue
+        end
         v = pred[i]
         if v in keys(uniqcount)
             uniqcount[v] += 1
@@ -146,38 +149,34 @@ function getauc(pred::Vector{T}, label::AbstractCovariate{S}; selector::Abstract
     sort!(uniqpred; rev = true)
     ucount = map((v -> uniqcount[v]), uniqpred)
     uniqcountcum = cumsum(ucount) - ucount
-    perm = Vector{Int64}(length(pred))
+    perm = Vector{Int64}(len)
     lenuniq = length(uniqpred)
     used = zeros(Int64, lenuniq)
+    offset = 1
     for i in 1:length(pred)
+        if !selector[i]
+            continue
+        end      
         v = pred[i]
         k = searchsortedfirst(uniqpred, v; rev = true) 
         j = uniqcountcum[k] + used[k] + 1
-        perm[j] = i
+        perm[j] = offset
         used[k] += 1
+        offset += 1
     end
-
-    offset = 1
-    for i in 1:length(uniqpred)
-        v = uniqpred[i]
-        cnt = uniqcount[v]
-        for j in 1:cnt
-            pred[offset] = v
-            offset += 1
-        end
-    end
-
-    len = length(label)
     sumlabel = sum(label)
     permute!(label, perm)
     cumlabel = cumsum!(label, label)
-    x = ones(S, len)
-    cumcount = cumsum!(x, x)
-    diff = view(pred, 2:len) .- view(pred, 1:(len - 1))
-    isstep = diff .!= zero(T)
-    push!(isstep, true)
+    isstep = BitArray{1}(len)
+    offset = 1
+    for i in 1:length(ucount)
+        for j in 1:ucount[i]
+            isstep[offset] = j == ucount[i]
+            offset += 1
+        end
+    end
     cumlabel = cumlabel[isstep]
-    cumcount = cumcount[isstep]
+    cumcount = map!((x -> convert(S, x)), cumsum(ucount))
     tpr = (cumlabel ./ sumlabel)
     fpr = ((cumcount .- cumlabel) ./ (length(label) .- sumlabel))
     len = length(tpr)

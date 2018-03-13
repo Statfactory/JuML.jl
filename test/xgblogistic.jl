@@ -1,3 +1,4 @@
+push!(LOAD_PATH, "C:\\Users\\adamm\\Dropbox\\Development\\JuML\\src")
 using Compat, Compat.Test
 using JuML
 traintest_df = DataFrame(joinpath("data", "airlinetraintest")) 
