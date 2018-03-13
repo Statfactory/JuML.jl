@@ -18,6 +18,7 @@ label = train_df["is_attributed"]
 click_time = train_df["click_time"]
 
 day = JuML.TransDateTimeCovariate("ClickDay", click_time, Dates.dayofweek)
+clickhour = JuML.TransDateTimeCovariate("ClickDay", click_time, Dates.hour)
 summary(day)
 #f = JuML.factor(h, 0:24)
 
@@ -46,7 +47,23 @@ end
 iprate = JuML.MapLevelFactor("iprate", ip, mapiplevel) 
 
 
-@time model = xgblogit(label, [filter((f -> JuML.getname(f) != "ip"), factors); iprate]; selector = trainset, η = 0.1, λ = 1.0, γ = 0.0, minchildweight = 200.0, nrounds = 200, maxdepth = 6, ordstumps = false, pruning = true, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);
+_, hourstats = getstats(clickhour, label);
+hourlevels = JuML.getlevels(clickhour)
+d_hour = Dict{String, String}()
+for (i, level) in enumerate(hourlevels)
+    d_hour[level] = string(hourstats[i].mean)
+end
+
+maphourlevel = (level::String) -> begin
+    get(d_hour, level, string(labelstats.mean))
+end
+
+hourrate = JuML.MapLevelFactor("hourrate", clickhour, maphourlevel) 
+
+
+
+
+@time model = xgblogit(label, [filter((f -> JuML.getname(f) != "ip"), factors); [iprate, hourrate]]; selector = trainset, η = 0.1, λ = 1.0, γ = 0.0, minchildweight = 200.0, nrounds = 200, maxdepth = 6, ordstumps = false, pruning = true, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);
 
 @time trainauc = getauc(model.pred, label; selector = convert(BitArray, trainset))
 @time testauc = getauc(model.pred, label; selector = convert(BitArray, testset))

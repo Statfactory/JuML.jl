@@ -28,7 +28,7 @@ function logloss(y::AbstractFloat, ŷ::AbstractFloat)
 end
 
 function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
-                  selector::AbstractBoolVariate = BoolVariate("", BitArray{1}(0)),
+                  selector::AbstractBoolVariate = BoolVariate("", BitArray{1}(0)), μ::Real = 0.5,
                   η::Real = 0.3, λ::Real = 1.0, γ::Real = 0.0, maxdepth::Integer = 6, nrounds::Integer = 2, ordstumps::Bool = false, pruning::Bool = true,
                   minchildweight::Real = 1.0, caching::Bool = true, slicelength::Integer = 0, usefloat64::Bool = false,
                   singlethread::Bool = false)
@@ -41,16 +41,13 @@ function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
     γ = T(γ)
     η = T(η)
     minchildweight = T(minchildweight)
-    μ = T(0.5)
+    μ = T(μ)
     f0 = Vector{T}(length(label))
     fill!(f0, T(logitraw(μ)))
     zerocov = ConstCovariate(zero(T), length(selector))
     fm, trees = fold((f0, Vector{XGTree}()), Seq(1:nrounds)) do x, m
         fm, trees = x
         ŷ = Covariate(sigmoid.(fm)) 
-
-        #∂𝑙 = length(selector) == 0 ? Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) : ifelse(selector, Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙), zerocov)
-        #∂²𝑙 = length(selector) == 0 ? TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙) : ifelse(selector, TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙), zerocov)
 
         f = caching ? cache : identity
         ∂𝑙 = length(selector) == 0 ? Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) |> f : ifelse(selector, Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙), zerocov) |> f
@@ -66,7 +63,7 @@ function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
 end
 
 function cvxgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor}, nfolds::Integer;
-                    aucmetric::Bool = true, loglossmetric::Bool = true, trainmetric::Bool = false,
+                    aucmetric::Bool = true, loglossmetric::Bool = true, trainmetric::Bool = false, μ::Real = 0.5,
                     η::Real = 0.3, λ::Real = 1.0, γ::Real = 0.0, maxdepth::Integer = 6, nrounds::Integer = 2, ordstumps::Bool = false, pruning::Bool = true,
                     minchildweight::Real = 1.0, caching::Bool = true, slicelength::Integer = 0, usefloat64::Bool = false,
                     singlethread::Bool = false)
@@ -79,7 +76,7 @@ function cvxgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor},
     for i in 1:nfolds
         trainselector = cvfolds .!= UInt8(i)
         testselector = cvfolds .== UInt8(i)
-        model = xgblogit(label, factors; selector = BoolVariate("", trainselector), η = η, λ = λ, γ = γ, maxdepth = maxdepth,
+        model = xgblogit(label, factors; selector = BoolVariate("", trainselector), η = η, λ = λ, γ = γ, μ = μ, maxdepth = maxdepth,
                          nrounds = nrounds, ordstumps = ordstumps, pruning = pruning, minchildweight = minchildweight,
                          caching = caching, slicelength = slicelength, usefloat64 = usefloat64, singlethread = singlethread)
         if aucmetric
@@ -115,9 +112,9 @@ function cvxgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor},
     res
 end
 
-function predict(model::XGModel{T}, dataframe::AbstractDataFrame) where {T<:AbstractFloat}
+function predict(model::XGModel{T}, dataframe::AbstractDataFrame; μ::Real = 0.5) where {T<:AbstractFloat}
     trees = model.trees
-    μ = T(0.5)
+    μ = T(μ)
     η = model.η
     f0 = Vector{T}(length(dataframe))
     fill!(f0, T(logitraw(μ)))  
@@ -130,55 +127,37 @@ function predict(model::XGModel{T}, dataframe::AbstractDataFrame) where {T<:Abst
 end
 
 function getauc(pred::Vector{T}, label::AbstractCovariate{S}; selector::AbstractVector{Bool} = BitArray{1}()) where {T <: AbstractFloat} where {S <: AbstractFloat}
-    label = convert(Vector{S}, label)
-    label = length(selector) == 0 ? label : label[selector]
+    labelslices = slice(label, 1, length(label), SLICELENGTH)
     len = length(selector) == 0 ? length(pred) : count(selector)
     uniqcount = Dict{T, Int64}()
-    for i in 1:length(pred)
-        if !selector[i]
-            continue
+    labelagg = Dict{T, S}()
+
+    fold(0, labelslices) do offset, slice
+        for i in 1:length(slice)
+            if !selector[offset + i]
+                continue
+            end
+            v = pred[offset + i]
+            if v in keys(uniqcount)
+                uniqcount[v] += 1
+            else
+                uniqcount[v] = 1
+            end
+            labelagg[v] = get(labelagg, v, zero(S)) + slice[i]
         end
-        v = pred[i]
-        if v in keys(uniqcount)
-            uniqcount[v] += 1
-        else
-            uniqcount[v] = 1
-        end
+        offset + length(slice)
     end
+
     uniqpred = collect(keys(uniqcount))
     sort!(uniqpred; rev = true)
     ucount = map((v -> uniqcount[v]), uniqpred)
-    uniqcountcum = cumsum(ucount) - ucount
-    perm = Vector{Int64}(len)
-    lenuniq = length(uniqpred)
-    used = zeros(Int64, lenuniq)
-    offset = 1
-    for i in 1:length(pred)
-        if !selector[i]
-            continue
-        end      
-        v = pred[i]
-        k = searchsortedfirst(uniqpred, v; rev = true) 
-        j = uniqcountcum[k] + used[k] + 1
-        perm[j] = offset
-        used[k] += 1
-        offset += 1
-    end
-    sumlabel = sum(label)
-    permute!(label, perm)
-    cumlabel = cumsum!(label, label)
-    isstep = BitArray{1}(len)
-    offset = 1
-    for i in 1:length(ucount)
-        for j in 1:ucount[i]
-            isstep[offset] = j == ucount[i]
-            offset += 1
-        end
-    end
-    cumlabel = cumlabel[isstep]
-    cumcount = map!((x -> convert(S, x)), cumsum(ucount))
+
+    sumlabel = sum(values(labelagg))
+    cumlabel = cumsum(map((p -> labelagg[p]), uniqpred))
+    cumcount = cumsum(ucount)
+    map!((x -> convert(S, x)), cumcount, cumcount)
     tpr = (cumlabel ./ sumlabel)
-    fpr = ((cumcount .- cumlabel) ./ (length(label) .- sumlabel))
+    fpr = ((cumcount .- cumlabel) ./ (len .- sumlabel))
     len = length(tpr)
     fpr1 = view(fpr, 1:(len-1))
     fpr2 = view(fpr, 2:len)
