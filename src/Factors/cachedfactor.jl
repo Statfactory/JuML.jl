@@ -1,5 +1,5 @@
 mutable struct CachedFactor{T<:Unsigned} <: AbstractFactor{T}
-    cache::Dict{Tuple{Integer, Integer}, AbstractVector{T}}
+    cache::Dict{Tuple{Int64, Int64}, SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}
     basefactor::AbstractFactor{T}
     lockobj::Threads.TatasLock
 end
@@ -10,12 +10,16 @@ getname(var::CachedFactor) = getname(var.basefactor)
 
 getlevels(var::CachedFactor) = getlevels(var.basefactor)
 
-function CachedFactor(basefactor::AbstractFactor{T}) where {T<:Unsigned}
-    CachedFactor{T}(Dict{Tuple{Integer, Integer}, AbstractVector{T}}(), basefactor, Threads.TatasLock())   
+function CachedFactor(factor::AbstractFactor{T}) where {T<:Unsigned}
+    if isa(factor, WiderFactor{T, T})
+        CachedFactor{T}(Dict{Tuple{Int64, Int64}, SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}(), factor.basefactor, Threads.TatasLock()) 
+    else
+        CachedFactor{T}(Dict{Tuple{Int64, Int64}, SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}(), factor, Threads.TatasLock()) 
+    end
 end
 
 function cache(basefactor::AbstractFactor{T}) where {T<:Unsigned}
-    CachedFactor{T}(Dict{Tuple{Integer, Integer}, AbstractVector{T}}(), basefactor, Threads.TatasLock()) 
+    CachedFactor{T}(Dict{Tuple{Int64, Int64}, SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}(), basefactor, Threads.TatasLock()) 
 end
 
 function slice(factor::CachedFactor{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:Unsigned}

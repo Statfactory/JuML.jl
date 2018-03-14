@@ -70,6 +70,10 @@ getname(datetimevar::AbstractDateTimeVariate) = datetimevar.name
 function widenfactors(factors::Vector{<:AbstractFactor})
     if all(map((factor -> issubtype(typeof(factor), AbstractFactor{UInt8})), factors))
         factors
+    elseif all(map((factor -> issubtype(typeof(factor), AbstractFactor{UInt16})), factors))
+            factors
+    elseif all(map((factor -> issubtype(typeof(factor), AbstractFactor{UInt32})), factors))
+            factors
     elseif all(map((factor -> issubtype(typeof(factor), AbstractFactor{UInt8}) || issubtype(typeof(factor), AbstractFactor{UInt16})), factors))
         [issubtype(typeof(factor), AbstractFactor{UInt16}) ? factor : WiderFactor{UInt8, UInt16}(factor) for factor in factors]
     else
@@ -183,7 +187,7 @@ end
 function Base.summary(boolvar::AbstractBoolVariate)
     io = IOBuffer()
     len = length(boolvar)
-    slices = slice(factor, 1, len, SLICELENGTH)
+    slices = slice(boolvar, 1, len, SLICELENGTH)
     truefreq = fold(0, slices) do acc, slice
         res = acc
         for v in slice

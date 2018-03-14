@@ -1,5 +1,5 @@
 mutable struct CachedBoolVariate <: AbstractBoolVariate
-    cache::Dict{Tuple{Integer, Integer}, AbstractVector{Bool}}
+    cache::Dict{Tuple{Int64, Int64}, SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}}
     basevariate::AbstractBoolVariate
     lockobj::Threads.TatasLock
 end
@@ -9,11 +9,11 @@ Base.length(var::CachedBoolVariate) = length(var.basevariate)
 getname(var::CachedBoolVariate) = getname(var.basevariate)
 
 function CachedBoolVariate(basevariate::AbstractBoolVariate) 
-    CachedBoolVariate(Dict{Tuple{Integer, Integer}, AbstractVector{Bool}}(), basevariate, Threads.TatasLock())  
+    CachedBoolVariate(Dict{Tuple{Int64, Int64}, SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}}(), basevariate, Threads.TatasLock())  
 end
 
 function cache(basevariate::AbstractBoolVariate) 
-    CachedBoolVariate(Dict{Tuple{Integer, Integer}, AbstractVector{Bool}}(), basevariate, Threads.TatasLock())  
+    CachedBoolVariate(Dict{Tuple{Int64, Int64}, SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}}(), basevariate, Threads.TatasLock())  
 end
 
 function slice(boolvariate::CachedBoolVariate, fromobs::Integer, toobs::Integer, slicelength::Integer) 

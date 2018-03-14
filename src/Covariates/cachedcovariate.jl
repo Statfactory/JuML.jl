@@ -1,5 +1,5 @@
 mutable struct CachedCovariate{T<:AbstractFloat} <: AbstractCovariate{T}
-    cache::Dict{Tuple{Integer, Integer}, AbstractVector{T}}
+    cache::Dict{Tuple{Int64, Int64}, SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}
     basecovariate::AbstractCovariate{T}
     lockobj::Threads.TatasLock
 end
@@ -9,11 +9,11 @@ Base.length(var::CachedCovariate) = length(var.basecovariate)
 getname(var::CachedCovariate) = getname(var.basecovariate)
 
 function CachedCovariate(basecovariate::AbstractCovariate{T}) where {T<:AbstractFloat}
-    CachedCovariate{T}(Dict{Tuple{Integer, Integer}, AbstractVector{T}}(), basecovariate, Threads.TatasLock())  
+    CachedCovariate{T}(Dict{Tuple{Int64, Int64}, SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}(), basecovariate, Threads.TatasLock())  
 end
 
 function cache(basecovariate::AbstractCovariate{T}) where {T<:AbstractFloat}
-    CachedCovariate{T}(Dict{Tuple{Integer, Integer}, AbstractVector{T}}(), basecovariate, Threads.TatasLock())  
+    CachedCovariate{T}(Dict{Tuple{Int64, Int64}, SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}(), basecovariate, Threads.TatasLock())  
 end
 
 function slice(covariate::CachedCovariate{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:AbstractFloat}

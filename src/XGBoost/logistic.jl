@@ -12,6 +12,10 @@ function logitraw(p::T) where {T<:AbstractFloat}
     -log(one(T) / p - one(T))
 end
 
+function logitraw(p::T, posweight::T) where {T<:AbstractFloat}
+    -log(one(T) / p - one(T)) + log(posweight)
+end
+
 function sigmoid(x::T) where {T<:AbstractFloat}
     one(T) / (one(T) + exp(-x))
 end
@@ -28,7 +32,7 @@ function logloss(y::AbstractFloat, ŷ::AbstractFloat)
 end
 
 function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
-                  selector::AbstractBoolVariate = BoolVariate("", BitArray{1}(0)), μ::Real = 0.5,
+                  selector::AbstractBoolVariate = BoolVariate("", BitArray{1}(0)), μ::Real = 0.5, posweight::Real = 1.0,
                   η::Real = 0.3, λ::Real = 1.0, γ::Real = 0.0, maxdepth::Integer = 6, nrounds::Integer = 2, ordstumps::Bool = false, pruning::Bool = true,
                   minchildweight::Real = 1.0, caching::Bool = true, slicelength::Integer = 0, usefloat64::Bool = false,
                   singlethread::Bool = false)
@@ -40,21 +44,36 @@ function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
     λ = T(λ)
     γ = T(γ)
     η = T(η)
+    posweight = T(posweight)
     minchildweight = T(minchildweight)
     μ = T(μ)
     f0 = Vector{T}(length(label))
-    fill!(f0, T(logitraw(μ)))
+    if posweight == one(T)
+        fill!(f0, T(logitraw(μ)))
+    else
+        fill!(f0, T(logitraw(μ, posweight)))
+    end
     zerocov = ConstCovariate(zero(T), length(selector))
     fm, trees = fold((f0, Vector{XGTree}()), Seq(1:nrounds)) do x, m
         fm, trees = x
         ŷ = Covariate(sigmoid.(fm)) 
 
         f = caching ? cache : identity
-        ∂𝑙 = length(selector) == 0 ? Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) |> f : ifelse(selector, Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙), zerocov) |> f
-        ∂²𝑙 = length(selector) == 0 ? TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙) |> f : ifelse(selector, TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙), zerocov) |> f
-        
+
+        ∂𝑙 = length(selector) == 0 ? Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) |> f : ifelse(selector, Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙), zerocov)
+        ∂²𝑙 = length(selector) == 0 ? TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙) |> f : ifelse(selector, TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙), zerocov)
+        if posweight != one(T)
+            ∂𝑙 = TransCovariate(T, "∂𝑙", ∂𝑙, x -> posweight * x)
+            ∂²𝑙 = TransCovariate(T, "∂²𝑙", ∂²𝑙, x -> posweight * x)
+        end
+        ∂𝑙 = ∂𝑙 |> f
+        ∂²𝑙 = ∂²𝑙 |> f
+
         tree, predraw = growtree(factors, ∂𝑙, ∂²𝑙, maxdepth, λ, γ, minchildweight, ordstumps, pruning, slicelength, singlethread)
         fm .= muladd.(η, predraw, fm)
+        predraw .= sigmoid.(fm)
+        @show m
+        @show getauc(predraw, label)
         push!(trees, tree)
         (fm, trees)
     end
@@ -112,12 +131,17 @@ function cvxgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor},
     res
 end
 
-function predict(model::XGModel{T}, dataframe::AbstractDataFrame; μ::Real = 0.5) where {T<:AbstractFloat}
+function predict(model::XGModel{T}, dataframe::AbstractDataFrame; μ::Real = 0.5, posweight::Real = 1.0,) where {T<:AbstractFloat}
     trees = model.trees
     μ = T(μ)
+    posweight = T(posweight)
     η = model.η
     f0 = Vector{T}(length(dataframe))
-    fill!(f0, T(logitraw(μ)))  
+    if posweight == one(T)
+        fill!(f0, T(logitraw(μ)))
+    else
+        fill!(f0, T(logitraw(μ, posweight)))
+    end
     for tree in trees
         predraw = predict(tree, dataframe)
         f0 .= muladd.(η, predraw, f0)
@@ -126,26 +150,47 @@ function predict(model::XGModel{T}, dataframe::AbstractDataFrame; μ::Real = 0.5
     f0
 end
 
-function getauc(pred::Vector{T}, label::AbstractCovariate{S}; selector::AbstractVector{Bool} = BitArray{1}()) where {T <: AbstractFloat} where {S <: AbstractFloat}
-    labelslices = slice(label, 1, length(label), SLICELENGTH)
-    len = length(selector) == 0 ? length(pred) : count(selector)
+function getauc(pred::Vector{T}, label::AbstractCovariate{S}; selector::AbstractBoolVariate = BoolVariate("", BitArray{1}()), slicelength::Integer = SLICELENGTH) where {T <: AbstractFloat} where {S <: AbstractFloat}
+    labelslices = slice(label, 1, length(label), slicelength)
+    sellen = length(selector) 
+
+    len = sellen == 0 ? length(pred) : begin
+        fold(0, slice(selector, 1, sellen, slicelength)) do acc, slice
+            res = acc
+            for v in slice
+                if v    
+                    res += 1
+                end
+            end
+            res
+        end
+    end
     uniqcount = Dict{T, Int64}()
     labelagg = Dict{T, S}()
 
-    fold(0, labelslices) do offset, slice
-        for i in 1:length(slice)
-            if !selector[offset + i]
-                continue
+    if sellen == 0
+        fold(0, labelslices) do offset, slice
+            for i in 1:length(slice)
+                v = pred[offset + i]
+                uniqcount[v] = get(uniqcount, v, 0) + 1
+                labelagg[v] = get(labelagg, v, zero(S)) + slice[i]
             end
-            v = pred[offset + i]
-            if v in keys(uniqcount)
-                uniqcount[v] += 1
-            else
-                uniqcount[v] = 1
-            end
-            labelagg[v] = get(labelagg, v, zero(S)) + slice[i]
+            offset + length(slice)
         end
-        offset + length(slice)
+    else
+        zipslices = zip2(labelslices, slice(selector, 1, sellen, slicelength))
+        fold(0, zipslices) do offset, slice
+            labelslice, selslice = slice
+            for i in 1:length(labelslice)
+                if !selslice[i]
+                    continue
+                end
+                v = pred[offset + i]
+                uniqcount[v] = get(uniqcount, v, 0) + 1
+                labelagg[v] = get(labelagg, v, zero(S)) + labelslice[i]
+            end
+            offset + length(labelslice)
+        end
     end
 
     uniqpred = collect(keys(uniqcount))

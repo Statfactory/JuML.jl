@@ -30,7 +30,7 @@ function slice(factor::OrdinalFactor{T}, fromobs::Integer, toobs::Integer, slice
         slice(factor.basefactor, fromobs, toobs, slicelength)
     else
         newindex = factor.newindex
-        f = (i::T -> newindex[i + 1])
+        f = (i::T -> newindex[i + one(T)])
         slicelength = verifyslicelength(fromobs, toobs, slicelength) 
         slices = slice(factor.basefactor, fromobs, toobs, slicelength)
         mapslice(f, slices, slicelength, T)

@@ -471,7 +471,9 @@ function growtree(factors::Vector{<:AbstractFactor}, ∂𝑙covariate::AbstractC
     maxnodecount = 2 ^ maxdepth
     nodeids = maxnodecount <= typemax(UInt8) ? ones(UInt8, len) : (maxnodecount <= typemax(UInt16) ? ones(UInt16, len) : ones(UInt32, len))
     intercept = ConstFactor(len)
+    @show "summing grad"
     grad0 = sumgradient(nodeids, [true], intercept, [LevelPartition([true], false)], ∂𝑙covariate, ∂²𝑙covariate, slicelength, singlethread)[1][1]
+    @show "summed grad"
     nodes0 = Vector{TreeNode{T}}()
     push!(nodes0, LeafNode{T}(grad0, true, Dict([f => LevelPartition(ones(Bool, length(getlevels(f))), true) for f in factors])))
     state0 = TreeGrowState{T}(nodeids, nodes0, factors, ∂𝑙covariate, ∂²𝑙covariate, λ, γ, min∂²𝑙, ordstumps, pruning, slicelength, singlethread)
@@ -482,7 +484,9 @@ function growtree(factors::Vector{<:AbstractFactor}, ∂𝑙covariate::AbstractC
         pruned = prune(tree, λ, γ)
         prunedlayers = map((nodes -> TreeLayer{T}(nodes)) , convert(Vector{Vector{TreeNode{T}}}, convert(List{List{TreeNode{T}}}, rebalance(pruned, maxdepth))))
         xgtree = XGTree{T}(prunedlayers, λ, γ, min∂²𝑙, maxdepth, slicelength, singlethread)
+        @show "predicting"
         pred = predict(xgtree.layers[end], nodeids, λ)
+        @show "predicted"
         xgtree, pred
     else
         pred = predict(xgtree.layers[end], nodeids, λ)
