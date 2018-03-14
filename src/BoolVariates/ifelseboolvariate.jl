@@ -15,7 +15,7 @@ function slice(boolvar::IfElseBoolVariate, fromobs::Integer, toobs::Integer, sli
     slicelength = verifyslicelength(fromobs, toobs, slicelength) 
     slices = zip3(slice(ifboolvar, fromobs, toobs, slicelength), slice(trueboolvar, fromobs, toobs, slicelength),
                   slice(falseboolvar, fromobs, toobs, slicelength)) 
-    mapslice3(f, slices, slicelength, Bool) 
+    mapslice3(f, slices, slicelength) 
 end
 
 function Base.ifelse(ifboolvar::AbstractBoolVariate, trueboolvar::AbstractBoolVariate, falseboolvar::AbstractBoolVariate)

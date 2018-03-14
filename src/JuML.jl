@@ -18,6 +18,7 @@ export importcsv,
        getstats,
        getauc,
        getlogloss,
+       cache,
        CovariateStats,
        FactorStats,
        LevelStats

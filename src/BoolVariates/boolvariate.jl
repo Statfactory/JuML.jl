@@ -1,6 +1,6 @@
 struct BoolVariate <: AbstractBoolVariate
     name::String
-    data::AbstractVector{Bool}
+    data::BitArray{1}
 end
 
 Base.length(boolvar::AbstractBoolVariate) = length(boolvar.data)

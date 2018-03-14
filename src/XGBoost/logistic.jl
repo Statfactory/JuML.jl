@@ -73,7 +73,7 @@ function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
         fm .= muladd.(η, predraw, fm)
         predraw .= sigmoid.(fm)
         @show m
-        @show getauc(predraw, label)
+        @show getauc(predraw, label; selector = selector)
         push!(trees, tree)
         (fm, trees)
     end

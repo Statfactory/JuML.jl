@@ -14,7 +14,7 @@ using JuML
                  isnumeric = (colname, levelfreq) -> false,
                  isdatetime = (colname, levelfreq) -> colname in ["click_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
-train_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\train", preload = false)
+train_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\train", preload = false)
 test_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test", preload = true)
 
 factors = train_df.factors
@@ -74,7 +74,7 @@ hourrate = JuML.OrdinalFactor("", JuML.MapLevelFactor("hourrate", clickhour, map
 
 poswgt = 1.0
 modelfactors = map(toordinal, [filter((f -> JuML.getname(f) != "ip"), factors); iprate])
-@time model = xgblogit(label, modelfactors; selector = trainset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, posweight = 1.0, minchildweight = 50.0, nrounds = 200, maxdepth = 4, ordstumps = true, pruning = true, caching = true, usefloat64 = false, singlethread = false, slicelength = 1000000);
+@time model = xgblogit(label, modelfactors; selector = trainset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, posweight = 1.0, minchildweight = 10.0, nrounds = 200, maxdepth = 5, ordstumps = true, pruning = true, caching = true, usefloat64 = false, singlethread = false, slicelength = 100000);
 
 @time trainauc = getauc(model.pred, label; selector = trainset)
 @time testauc = getauc(model.pred, label; selector = testset)
