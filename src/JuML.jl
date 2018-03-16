@@ -53,6 +53,7 @@ include("Covariates/parsefactorcovariate.jl")
 include("Covariates/ifelsecovariate.jl")
 include("Covariates/unixdatecovariate.jl")
 include("Covariates/transdatetimecovariate.jl")
+include("Covariates/randcovariate.jl")
 
 include("BoolVariates/boolvariate.jl")
 include("BoolVariates/cachedboolvariate.jl")

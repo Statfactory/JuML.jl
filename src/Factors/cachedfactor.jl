@@ -1,5 +1,5 @@
 mutable struct CachedFactor{T<:Unsigned} <: AbstractFactor{T}
-    cache::Dict{Tuple{Int64, Int64}, SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}
+    cache::Nullable{SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}
     basefactor::AbstractFactor{T}
     lockobj::Threads.TatasLock
 end
@@ -12,14 +12,14 @@ getlevels(var::CachedFactor) = getlevels(var.basefactor)
 
 function CachedFactor(factor::AbstractFactor{T}) where {T<:Unsigned}
     if isa(factor, WiderFactor{T, T})
-        CachedFactor{T}(Dict{Tuple{Int64, Int64}, SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}(), factor.basefactor, Threads.TatasLock()) 
+        CachedFactor{T}(Nullable{SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}(), factor.basefactor, Threads.TatasLock()) 
     else
-        CachedFactor{T}(Dict{Tuple{Int64, Int64}, SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}(), factor, Threads.TatasLock()) 
+        CachedFactor{T}(Nullable{SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}(), factor, Threads.TatasLock()) 
     end
 end
 
 function cache(basefactor::AbstractFactor{T}) where {T<:Unsigned}
-    CachedFactor{T}(Dict{Tuple{Int64, Int64}, SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}(), basefactor, Threads.TatasLock()) 
+    CachedFactor{T}(Nullable{SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}(), basefactor, Threads.TatasLock()) 
 end
 
 function slice(factor::CachedFactor{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:Unsigned}
@@ -31,14 +31,14 @@ function slice(factor::CachedFactor{T}, fromobs::Integer, toobs::Integer, slicel
         lockobj = factor.lockobj
         lock(lockobj)
         try
-            if !((fromobs, toobs) in keys(factor.cache))
-                v, _ = tryread(slice(basefactor, fromobs, toobs, toobs - fromobs + 1))
-                factor.cache[(fromobs, toobs)] = get(v)
+            if isnull(factor.cache)
+                v, _ = tryread(slice(basefactor, 1, length(factor), length(factor)))
+                factor.cache = v
             end
         finally
             unlock(lockobj)
         end
-        slice(factor.cache[(fromobs, toobs)], 1, toobs - fromobs + 1, slicelength)
+        slice(get(factor.cache), fromobs, toobs, slicelength)
     end
 end
 

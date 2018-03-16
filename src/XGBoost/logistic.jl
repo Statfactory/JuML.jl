@@ -32,7 +32,7 @@ function logloss(y::AbstractFloat, ŷ::AbstractFloat)
 end
 
 function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
-                  selector::AbstractBoolVariate = BoolVariate("", BitArray{1}(0)), μ::Real = 0.5, posweight::Real = 1.0,
+                  selector::AbstractBoolVariate = BoolVariate("", BitArray{1}(0)), μ::Real = 0.5, posweight::Real = 1.0, subsample::Real = 1.0,
                   η::Real = 0.3, λ::Real = 1.0, γ::Real = 0.0, maxdepth::Integer = 6, nrounds::Integer = 2, ordstumps::Bool = false, pruning::Bool = true,
                   minchildweight::Real = 1.0, caching::Bool = true, slicelength::Integer = 0, usefloat64::Bool = false,
                   singlethread::Bool = false)
@@ -41,12 +41,14 @@ function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
     factors = caching ? map(cache, widenfactors(filter((f -> getname(f) != getname(label)), factors))) : filter((f -> getname(f) != getname(label)), factors)
     label = caching ? cache(label) : label
     slicelength = slicelength <= 0 ? length(label) : slicelength
+    selector = caching ? (selector |> cache) : selector
     λ = T(λ)
     γ = T(γ)
     η = T(η)
     posweight = T(posweight)
     minchildweight = T(minchildweight)
     μ = T(μ)
+    subsample = T(subsample)
     f0 = Vector{T}(length(label))
     if posweight == one(T)
         fill!(f0, T(logitraw(μ)))
@@ -60,8 +62,10 @@ function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
 
         f = caching ? cache : identity
 
-        ∂𝑙 = length(selector) == 0 ? Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) |> f : ifelse(selector, Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙), zerocov)
-        ∂²𝑙 = length(selector) == 0 ? TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙) |> f : ifelse(selector, TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙), zerocov)
+        trainselector = subsample == one(T) ? selector : (selector .& (TransCovBoolVariate("", RandCovariate(length(label)), x -> x .<= subsample)))
+
+        ∂𝑙 = length(selector) == 0 ? Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) |> f : ifelse(trainselector, Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙), zerocov)
+        ∂²𝑙 = length(selector) == 0 ? TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙) |> f : ifelse(trainselector, TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙), zerocov)
         if posweight != one(T)
             ∂𝑙 = TransCovariate(T, "∂𝑙", ∂𝑙, x -> posweight * x)
             ∂²𝑙 = TransCovariate(T, "∂²𝑙", ∂²𝑙, x -> posweight * x)
@@ -73,7 +77,11 @@ function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
         fm .= muladd.(η, predraw, fm)
         predraw .= sigmoid.(fm)
         @show m
-        @show getauc(predraw, label; selector = selector)
+        if length(selector) > 0
+            @show trainauc, testauc = getauc(predraw, label, selector; slicelength = slicelength)
+        else
+            @show auc = getauc(predraw, label; slicelength = slicelength)
+        end
         push!(trees, tree)
         (fm, trees)
     end
@@ -150,47 +158,20 @@ function predict(model::XGModel{T}, dataframe::AbstractDataFrame; μ::Real = 0.5
     f0
 end
 
-function getauc(pred::Vector{T}, label::AbstractCovariate{S}; selector::AbstractBoolVariate = BoolVariate("", BitArray{1}()), slicelength::Integer = SLICELENGTH) where {T <: AbstractFloat} where {S <: AbstractFloat}
+function getauc(pred::Vector{T}, label::AbstractCovariate{S}; slicelength::Integer = SLICELENGTH) where {T <: AbstractFloat} where {S <: AbstractFloat}
     labelslices = slice(label, 1, length(label), slicelength)
-    sellen = length(selector) 
 
-    len = sellen == 0 ? length(pred) : begin
-        fold(0, slice(selector, 1, sellen, slicelength)) do acc, slice
-            res = acc
-            for v in slice
-                if v    
-                    res += 1
-                end
-            end
-            res
-        end
-    end
+    len = length(pred) 
     uniqcount = Dict{T, Int64}()
     labelagg = Dict{T, S}()
 
-    if sellen == 0
-        fold(0, labelslices) do offset, slice
-            for i in 1:length(slice)
-                v = pred[offset + i]
-                uniqcount[v] = get(uniqcount, v, 0) + 1
-                labelagg[v] = get(labelagg, v, zero(S)) + slice[i]
-            end
-            offset + length(slice)
+    fold(0, labelslices) do offset, slice
+        for i in 1:length(slice)
+            v = pred[offset + i]
+            uniqcount[v] = get(uniqcount, v, 0) + 1
+            labelagg[v] = get(labelagg, v, zero(S)) + slice[i]
         end
-    else
-        zipslices = zip2(labelslices, slice(selector, 1, sellen, slicelength))
-        fold(0, zipslices) do offset, slice
-            labelslice, selslice = slice
-            for i in 1:length(labelslice)
-                if !selslice[i]
-                    continue
-                end
-                v = pred[offset + i]
-                uniqcount[v] = get(uniqcount, v, 0) + 1
-                labelagg[v] = get(labelagg, v, zero(S)) + labelslice[i]
-            end
-            offset + length(labelslice)
-        end
+        offset + length(slice)
     end
 
     uniqpred = collect(keys(uniqcount))
@@ -210,6 +191,87 @@ function getauc(pred::Vector{T}, label::AbstractCovariate{S}; selector::Abstract
     tpr2 = view(tpr, 2:len)
     area0 = fpr[1] * tpr[1] 
     0.5 * (sum((tpr1 .+ tpr2) .* (fpr2 .- fpr1)) + area0)
+end
+
+function getauc(pred::Vector{T}, label::AbstractCovariate{S}, selector::AbstractBoolVariate; slicelength::Integer = SLICELENGTH) where {T <: AbstractFloat} where {S <: AbstractFloat}
+    labelslices = slice(label, 1, length(label), slicelength)
+    sellen = length(selector) 
+
+    lentrue = begin
+        fold(0, slice(selector, 1, sellen, slicelength)) do acc, slice
+            res = acc
+            for v in slice
+                if v    
+                    res += 1
+                end
+            end
+            res
+        end
+    end
+    lenfalse = sellen - lentrue
+
+    uniqcountin = Dict{T, Int64}()
+    labelaggin = Dict{T, S}()
+    uniqcountout = Dict{T, Int64}()
+    labelaggout = Dict{T, S}()
+
+    zipslices = zip2(labelslices, slice(selector, 1, sellen, slicelength))
+    fold(0, zipslices) do offset, slice
+        labelslice, selslice = slice
+        for i in 1:length(labelslice)
+            if selslice[i]
+                v = pred[offset + i]
+                uniqcountin[v] = get(uniqcountin, v, 0) + 1
+                labelaggin[v] = get(labelaggin, v, zero(S)) + labelslice[i]              
+            else
+                v = pred[offset + i]
+                uniqcountout[v] = get(uniqcountout, v, 0) + 1
+                labelaggout[v] = get(labelaggout, v, zero(S)) + labelslice[i]  
+            end
+        end
+        offset + length(labelslice)
+    end
+
+    uniqpredin = collect(keys(uniqcountin))
+    sort!(uniqpredin; rev = true)
+    ucountin = map((v -> uniqcountin[v]), uniqpredin)
+
+    uniqpredout = collect(keys(uniqcountout))
+    sort!(uniqpredout; rev = true)
+    ucountout = map((v -> uniqcountout[v]), uniqpredout)
+
+    aucin = begin
+        sumlabel = sum(values(labelaggin))
+        cumlabel = cumsum(map((p -> labelaggin[p]), uniqpredin))
+        cumcount = cumsum(ucountin)
+        map!((x -> convert(S, x)), cumcount, cumcount)
+        tpr = (cumlabel ./ sumlabel)
+        fpr = ((cumcount .- cumlabel) ./ (lentrue .- sumlabel))
+        len = length(tpr)
+        fpr1 = view(fpr, 1:(len-1))
+        fpr2 = view(fpr, 2:len)
+        tpr1 = view(tpr, 1:(len - 1))
+        tpr2 = view(tpr, 2:len)
+        area0 = fpr[1] * tpr[1] 
+        0.5 * (sum((tpr1 .+ tpr2) .* (fpr2 .- fpr1)) + area0)
+    end
+
+    aucout = begin
+        sumlabel = sum(values(labelaggout))
+        cumlabel = cumsum(map((p -> labelaggout[p]), uniqpredout))
+        cumcount = cumsum(ucountout)
+        map!((x -> convert(S, x)), cumcount, cumcount)
+        tpr = (cumlabel ./ sumlabel)
+        fpr = ((cumcount .- cumlabel) ./ (lenfalse .- sumlabel))
+        len = length(tpr)
+        fpr1 = view(fpr, 1:(len-1))
+        fpr2 = view(fpr, 2:len)
+        tpr1 = view(tpr, 1:(len - 1))
+        tpr2 = view(tpr, 2:len)
+        area0 = fpr[1] * tpr[1] 
+        0.5 * (sum((tpr1 .+ tpr2) .* (fpr2 .- fpr1)) + area0)
+    end
+    aucin, aucout
 end
 
 function getlogloss(pred::Vector{T}, label::AbstractCovariate{S}; selector::AbstractVector{Bool} = BitArray{1}()) where {T <: AbstractFloat} where {S <: AbstractFloat}
