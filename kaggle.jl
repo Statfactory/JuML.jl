@@ -14,7 +14,7 @@ using JuML
                  isnumeric = (colname, levelfreq) -> false,
                  isdatetime = (colname, levelfreq) -> colname in ["click_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
-train_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\train", preload = false)
+train_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\train", preload = true)
 test_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test", preload = true)
 
 factors = train_df.factors
@@ -33,9 +33,10 @@ summary(day)
 #trainset = (day .< 4) |> JuML.cache
 #testset = (day .== 4) |> JuML.cache
 
-cutoff = DateTime(2017, 11, 9, 8, 0, 0)
+cutoff = DateTime(2017, 11, 9, 11, 0, 0)
 trainset = JuML.TransDateTimeBoolVariate("", click_time, t -> t <= cutoff) |> JuML.cache;
-testset = JuML.TransDateTimeBoolVariate("", click_time, t -> t > cutoff) |> JuML.cache;
+#testset = JuML.TransDateTimeBoolVariate("", click_time, t -> t > cutoff) |> JuML.cache;
+summary(trainset)
 
 ip = train_df["ip"]
 
@@ -72,15 +73,14 @@ end
 
 hourrate = JuML.OrdinalFactor("", JuML.MapLevelFactor("hourrate", clickhour, maphourlevel), (x, y) -> parse(x) < parse(y))  
 
-poswgt = 1.0
 modelfactors = map(toordinal, [filter((f -> JuML.getname(f) != "ip"), factors); iprate])
-@time model = xgblogit(label, modelfactors; selector = trainset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 0.7, posweight = 1.0, minchildweight = 0.0, nrounds = 200, maxdepth = 5, ordstumps = true, pruning = true, caching = true, usefloat64 = false, singlethread = false, slicelength = 1000000);
+@time model = xgblogit(label, modelfactors; selector = trainset, η = 0.3, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = 9.0, minchildweight = 0.0, nrounds = 200, maxdepth = 4, ordstumps = false, pruning = true, caching = true, usefloat64 = false, singlethread = false, slicelength = 1000000);
 
 @time trainauc = getauc(model.pred, label; selector = trainset)
 @time testauc = getauc(model.pred, label; selector = testset)
 
 mean(model.pred)
-@time pred = predict(model, test_df; posweight = poswgt)
+@time pred = predict(model, test_df)
 mean(pred)
 is_attr = Covariate("is_attributed", pred)
 click_id = test_df["click_id"]

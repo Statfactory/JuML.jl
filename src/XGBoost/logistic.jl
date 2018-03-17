@@ -31,11 +31,11 @@ function logloss(y::AbstractFloat, ŷ::AbstractFloat)
     end
 end
 
-function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
+function xgblogit(label::AbstractCovariate{S}, factors::Vector{<:AbstractFactor};
                   selector::AbstractBoolVariate = BoolVariate("", BitArray{1}(0)), μ::Real = 0.5, posweight::Real = 1.0, subsample::Real = 1.0,
                   η::Real = 0.3, λ::Real = 1.0, γ::Real = 0.0, maxdepth::Integer = 6, nrounds::Integer = 2, ordstumps::Bool = false, pruning::Bool = true,
                   minchildweight::Real = 1.0, caching::Bool = true, slicelength::Integer = 0, usefloat64::Bool = false,
-                  singlethread::Bool = false)
+                  singlethread::Bool = false) where {S<:AbstractFloat}
 
     T = usefloat64 ? Float64 : Float32
     factors = caching ? map(cache, widenfactors(filter((f -> getname(f) != getname(label)), factors))) : filter((f -> getname(f) != getname(label)), factors)
@@ -56,6 +56,7 @@ function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
         fill!(f0, T(logitraw(μ, posweight)))
     end
     zerocov = ConstCovariate(zero(T), length(selector))
+    poswgtcov = ifelse(TransCovBoolVariate("", label, x -> x == one(S)), ConstCovariate(posweight, length(label)), ConstCovariate(one(S), length(label))) |> cache
     fm, trees = fold((f0, Vector{XGTree}()), Seq(1:nrounds)) do x, m
         fm, trees = x
         ŷ = Covariate(sigmoid.(fm)) 
@@ -67,8 +68,8 @@ function xgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor};
         ∂𝑙 = length(selector) == 0 ? Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) |> f : ifelse(trainselector, Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙), zerocov)
         ∂²𝑙 = length(selector) == 0 ? TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙) |> f : ifelse(trainselector, TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙), zerocov)
         if posweight != one(T)
-            ∂𝑙 = TransCovariate(T, "∂𝑙", ∂𝑙, x -> posweight * x)
-            ∂²𝑙 = TransCovariate(T, "∂²𝑙", ∂²𝑙, x -> posweight * x)
+            ∂𝑙 = Trans2Covariate(T, "∂𝑙", ∂𝑙, poswgtcov, *)
+            ∂²𝑙 = Trans2Covariate(T, "∂²𝑙", ∂²𝑙, poswgtcov, *)
         end
         ∂𝑙 = ∂𝑙 |> f
         ∂²𝑙 = ∂²𝑙 |> f
