@@ -67,6 +67,13 @@ getname(boolvar::AbstractBoolVariate) = boolvar.name
 
 getname(datetimevar::AbstractDateTimeVariate) = datetimevar.name
 
+Base.length(covariate::AbstractCovariate{T}) where {T<:AbstractFloat} = covariate.length
+
+Base.length(boolvar::AbstractBoolVariate) = boolvar.length
+
+Base.length(factor::AbstractFactor{T}) where {T<:Unsigned} = factor.length
+
+
 function widenfactors(factors::Vector{<:AbstractFactor})
     if all(map((factor -> issubtype(typeof(factor), AbstractFactor{UInt8})), factors))
         factors

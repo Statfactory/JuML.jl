@@ -3,7 +3,7 @@ struct BoolVariate <: AbstractBoolVariate
     data::BitArray{1}
 end
 
-Base.length(boolvar::AbstractBoolVariate) = length(boolvar.data)
+Base.length(boolvar::BoolVariate) = length(boolvar.data)
 
 function slice(boolvar::BoolVariate, fromobs::Integer, toobs::Integer, slicelength::Integer)
     slicelength = verifyslicelength(fromobs, toobs, slicelength) 

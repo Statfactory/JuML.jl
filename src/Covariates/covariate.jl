@@ -3,7 +3,7 @@ struct Covariate{T<:AbstractFloat} <: AbstractCovariate{T}
     data::AbstractVector{T}
 end
 
-Base.length(covariate::AbstractCovariate{T}) where {T<:AbstractFloat} = length(covariate.data)
+Base.length(covariate::Covariate{T}) where {T<:AbstractFloat} = length(covariate.data)
 
 function Covariate(data::AbstractVector{T}) where {T<:AbstractFloat}
     Covariate{T}("", data)
