@@ -1,7 +1,8 @@
-#push!(LOAD_PATH, "C:\\Users\\adamm\\Dropbox\\Development\\JuML\\src")
+push!(LOAD_PATH, "C:\\Users\\adamm\\Dropbox\\Development\\JuML\\src")
 push!(LOAD_PATH, "C:\\Users\\statfactory\\Documents\\JuML.jl\\src")
 using Compat, Compat.Test
 using JuML
+
 traintest_df = DataFrame(joinpath("data", "airlinetraintest")) 
 distance = traintest_df["Distance"]
 deptime = traintest_df["DepTime"]
@@ -13,7 +14,7 @@ factors = [traintest_df.factors; [deptime, distance]]
 
 trainsel = BoolVariate("trainsel", (1:1100000) .<= 1000000)
 
-model1 = xgblogit(label, factors; selector = trainsel,  η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 6, ordstumps = false, pruning = true, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);
+model1 = xgblogit(label, factors; selector = trainsel,  η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 6, ordstumps = false, pruning = false, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);
 _, testauc1 = getauc(model1.pred, label, trainsel)
 @test testauc1 ≈ 0.7004898 atol = 0.0000001
 
@@ -33,28 +34,35 @@ model5 = xgblogit(label, factors; selector = trainsel, η = 0.1, λ = 1.0, γ = 
 _, testauc5 = getauc(model5.pred, label, trainsel)
 @test testauc5 ≈ 0.7255029 atol = 0.0002
 
+
+
+model6 = xgblogit(label, factors; selector = trainsel,  η = 1, λ = 1.0, γ = 0.0, minchildweight = 0.0, nrounds = 1, maxdepth = 6, ordstumps = false, pruning = false, leafwise = true, maxleaves = 64, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);
+_, testauc6 = getauc(model6.pred, label, trainsel)
+@test testauc6 ≈ 0.7004898 atol = 0.0000001
+
 # XGBoost R script to compare:
 # Data:
 # wget https://s3.amazonaws.com/benchm-ml--main/train-1m.csv
 # wget https://s3.amazonaws.com/benchm-ml--main/train-10m.csv
 # wget https://s3.amazonaws.com/benchm-ml--main/test.csv
 
-# suppressMessages({
-# library(data.table)
-# library(ROCR)
-# library(xgboost)
-# library(MLmetrics)
-# library(Matrix)
-# })
-# d_train <- fread("airlinetrain1m.csv", showProgress=FALSE, stringsAsFactors=TRUE)
-# d_test <- fread("airlinetest.csv", showProgress=FALSE, stringsAsFactors=TRUE)
-# X_train_test <- sparse.model.matrix(dep_delayed_15min ~ .-1, data = rbind(d_train, d_test))
-# n1 <- nrow(d_train)
-# n2 <- nrow(d_test)
-# X_train <- X_train_test[1:n1,]
-# X_test <- X_train_test[(n1+1):(n1+n2),]
-# dxgb_train <- xgb.DMatrix(data = X_train, label = ifelse(d_train$dep_delayed_15min=='Y',1,0))
-# md <- xgb.train(data = dxgb_train, objective = "binary:logistic", nround = 10, max_depth = 10, eta = 0.1, tree_method='exact')
-# phat <- predict(md, newdata = X_test)
-# testlabel = ifelse(d_test$dep_delayed_15min=='Y',1,0)
-# AUC(phat, testlabel)
+suppressMessages({
+library(data.table)
+library(ROCR)
+library(xgboost)
+library(MLmetrics)
+library(Matrix)
+})
+d_train <- fread("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetrain1m.csv", showProgress=FALSE, stringsAsFactors=TRUE)
+d_test <- fread("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetest.csv", showProgress=FALSE, stringsAsFactors=TRUE)
+X_train_test <- sparse.model.matrix(dep_delayed_15min ~ .-1, data = rbind(d_train, d_test))
+n1 <- nrow(d_train)
+n2 <- nrow(d_test)
+X_train <- X_train_test[1:n1,]
+X_test <- X_train_test[(n1+1):(n1+n2),]
+dxgb_train <- xgb.DMatrix(data = X_train, label = ifelse(d_train$dep_delayed_15min=='Y',1,0))
+md <- xgb.train(data = dxgb_train, objective = "binary:logistic", nround = 10, max_depth = 10, eta = 0.1, tree_method='exact')
+md <- xgb.train(data = dxgb_train, objective = "binary:logistic", nround = 10, max_depth = 10, eta = 0.1, tree_method='hist', grow_policy='lossguide', max_leaves=256, max_bin=5000)
+phat <- predict(md, newdata = X_test)
+testlabel = ifelse(d_test$dep_delayed_15min=='Y',1,0)
+AUC(phat, testlabel)

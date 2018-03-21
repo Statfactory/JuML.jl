@@ -70,14 +70,10 @@ function sumgradient(nodeids::Vector{<:Integer}, nodecansplit::Vector{Bool}, fac
     end
 end
 
-function splitnodeidsslice!(nodeids::Vector{<:Integer}, factors, issplitnode::Vector{Bool},
+function splitnodeidsslice!(nodeids::Vector{<:Integer}, factors, issplitnode::Vector{Bool}, nodemap::Vector{Int64},
                             leftpartitions::Vector{Vector{Bool}}, factorindex::Vector{Int64},
                             fromobs::Integer, toobs::Integer, slicelength::Integer)
-    if length(factors) == 0
-        for i in fromobs:toobs
-            nodeids[i] = 2 * nodeids[i] - 1
-        end
-    else
+    if length(factors) > 0
         factorslices = zipn([slice(factor, fromobs, toobs, slicelength) for factor in factors])
         nodeslices = slice(nodeids, fromobs, toobs, slicelength)
         foreach(zip2(nodeslices, factorslices)) do x
@@ -86,9 +82,9 @@ function splitnodeidsslice!(nodeids::Vector{<:Integer}, factors, issplitnode::Ve
                 nodeid = nodeslice[i]
                 if issplitnode[nodeid]
                     levelindex = fslices[factorindex[nodeid]][i]
-                    nodeslice[i] = (leftpartitions[nodeid][levelindex + 1]) ? (2 * nodeslice[i] - 1) : (2 * nodeslice[i]) 
+                    nodeslice[i] = (leftpartitions[nodeid][levelindex + 1]) ? nodemap[nodeslice[i]] : nodemap[nodeslice[i]] + 1
                 else
-                    nodeslice[i] = 2 * nodeslice[i] - 1
+                    nodeslice[i] = nodemap[nodeslice[i]]
                 end
             end
         end
@@ -102,6 +98,14 @@ function splitnodeids!(nodeids::Vector{<:Integer}, layer::TreeLayer{T}, slicelen
     fromobs = 1
     toobs = len
     issplitnode = [isa(n, SplitNode) for n in nodes]
+    nodemap = Vector{Int64}()
+    splitnodecount = 0
+    for (i, x) in enumerate(issplitnode)
+        push!(nodemap, i + splitnodecount) 
+        if x
+            splitnodecount += 1
+        end
+    end
     factors = Vector{AbstractFactor}()
     factorindex = Vector{Int64}(nodecount)
     for i in 1:nodecount
@@ -121,12 +125,12 @@ function splitnodeids!(nodeids::Vector{<:Integer}, layer::TreeLayer{T}, slicelen
     if nthreads > 1
         threadspace = map((x -> Int64(floor(x))), LinSpace(fromobs, toobs, nthreads + 1))
         Threads.@threads for j in 1:nthreads
-             splitnodeidsslice!(nodeids, factors, issplitnode, leftpartitions, factorindex,
+             splitnodeidsslice!(nodeids, factors, issplitnode, nodemap, leftpartitions, factorindex,
                                 j == 1 ? threadspace[j] : threadspace[j] + 1,
                                 threadspace[j + 1], slicelength)
         end
     else
-        splitnodeidsslice!(nodeids, factors, issplitnode, leftpartitions, factorindex,
+        splitnodeidsslice!(nodeids, factors, issplitnode, nodemap, leftpartitions, factorindex,
                            fromobs, toobs, slicelength)
     end
     nodeids
@@ -301,6 +305,7 @@ end
 function findbestsplit(state::TreeGrowState{T}) where {T<:AbstractFloat}
 
     nodecansplit = [n.cansplit for n in state.nodes]
+    bestgain = zero(T)
     foldl(state.nodes, enumerate(state.factors)) do currsplit, nfactor
         n, factor = nfactor
         partitions = [node.partitions[factor] for node in state.nodes]
@@ -310,12 +315,31 @@ function findbestsplit(state::TreeGrowState{T}) where {T<:AbstractFloat}
         newsplit = getnewsplit(gradient, state.nodes, factor, state.λ, state.γ, state.min∂²𝑙, state.ordstumps, state.singlethread)
 
         res = Vector{TreeNode{T}}(length(newsplit))
-        @inbounds for i in 1:length(newsplit)
-             if !isnull(newsplit[i]) && get(newsplit[i]).loss < getloss(currsplit[i], state.λ)
-                res[i] = get(newsplit[i]) 
-             else
-                res[i] = currsplit[i] 
-             end
+        if state.leafwise
+            gain = [isnull(newsplit[i]) ? T(NaN32) : getloss(state.nodes[i], state.λ) - get(newsplit[i]).loss for i in 1:length(newsplit)]
+            (maxgain, imax) = findmax(gain)
+            if maxgain > bestgain
+                bestgain = maxgain
+                @inbounds for i in 1:length(newsplit)
+                    if i == imax
+                        res[i] = get(newsplit[i])
+                    else
+                        res[i] = state.nodes[i] 
+                    end
+                end
+            else
+                @inbounds for i in 1:length(newsplit)
+                        res[i] = currsplit[i] 
+                end
+            end
+        else
+            @inbounds for i in 1:length(newsplit)
+                if !isnull(newsplit[i]) && get(newsplit[i]).loss < getloss(currsplit[i], state.λ)
+                   res[i] = get(newsplit[i]) 
+                else
+                   res[i] = currsplit[i] 
+                end
+           end
         end
         res
     end
@@ -324,7 +348,7 @@ end
 function updatestate(state::TreeGrowState{T}, layer::TreeLayer{T}) where {T<:AbstractFloat}
     splitnodeids!(state.nodeids, layer, state.slicelength, state.singlethread)  
     factors = state.factors
-    newnodes = Vector{LeafNode{T}}(2 * length(state.nodes))
+    newnodes = Vector{LeafNode{T}}()
     @inbounds for (i, n) in enumerate(layer.nodes)
         if isa(n, SplitNode)
             leftpartitions = map(state.nodes[i].partitions) do x
@@ -343,15 +367,14 @@ function updatestate(state::TreeGrowState{T}, layer::TreeLayer{T}) where {T<:Abs
                     x
                 end
             end
-            newnodes[2 * i - 1] = LeafNode{T}(n.leftgradient,
-                                              n.leftgradient.∂²𝑙 >= state.min∂²𝑙,
-                                              leftpartitions)
-            newnodes[2 * i] = LeafNode{T}(n.rightgradient,
-                                          n.rightgradient.∂²𝑙 >= state.min∂²𝑙,
-                                          rightpartitions)
+            push!(newnodes, LeafNode{T}(n.leftgradient,
+                                        n.leftgradient.∂²𝑙 >= state.min∂²𝑙,
+                                        leftpartitions))
+            push!(newnodes, LeafNode{T}(n.rightgradient,
+                                        n.rightgradient.∂²𝑙 >= state.min∂²𝑙,
+                                        rightpartitions))
         else
-            newnodes[2 * i - 1] = LeafNode{T}(n.gradient, false, n.partitions)
-            newnodes[2 * i] = LeafNode{T}(n.gradient, false, n.partitions)
+            push!(newnodes, LeafNode{T}(n.gradient, n.cansplit, n.partitions))
         end
     end
     activefactors = filter(factors) do f
@@ -375,14 +398,13 @@ function nextlayer(state::TreeGrowState{T}) where {T<:AbstractFloat}
 end
 
 function predict(treelayer::TreeLayer{T}, nodeids::Vector{<:Integer}, λ::T) where {T<:AbstractFloat}
-    weights = Vector{T}(2 * length(treelayer.nodes))
+    weights = Vector{T}()
     @inbounds for (i, node) in enumerate(treelayer.nodes)
         if isa(node, SplitNode)
-            weights[2 * i - 1] = getweight(node.leftgradient, λ)
-            weights[2 * i] = getweight(node.rightgradient, λ)
+            push!(weights, getweight(node.leftgradient, λ))
+            push!(weights, getweight(node.rightgradient, λ))
         else
-            weights[2 * i - 1] = getweight(node.gradient, λ)
-            weights[2 * i] = getweight(node.gradient, λ)
+            push!(weights, getweight(node.gradient, λ))
         end
     end
     (nodeid -> nodeid > 0 ? weights[nodeid] : T(NaN32)).(nodeids)
@@ -464,18 +486,19 @@ function predict(tree::XGTree{T}, dataframe::AbstractDataFrame) where {T<:Abstra
 end
 
 function growtree(factors::Vector{<:AbstractFactor}, ∂𝑙covariate::AbstractCovariate{T},
-                  ∂²𝑙covariate::AbstractCovariate{T}, maxdepth::Integer, λ::T, γ::T,
+                  ∂²𝑙covariate::AbstractCovariate{T}, maxdepth::Integer, λ::T, γ::T, leafwise::Bool, maxleaves::Integer,
                   min∂²𝑙::T, ordstumps::Bool, pruning::Bool, slicelength::Integer, singlethread::Bool) where {T<:AbstractFloat}
 
     len = length(∂𝑙covariate)
-    maxnodecount = 2 ^ maxdepth
+    maxnodecount = leafwise ? maxleaves : 2 ^ maxdepth
+    maxsteps = leafwise ? (maxleaves - 1) : maxdepth
     nodeids = maxnodecount <= typemax(UInt8) ? ones(UInt8, len) : (maxnodecount <= typemax(UInt16) ? ones(UInt16, len) : ones(UInt32, len))
     intercept = ConstFactor(len)
     @time grad0 = sumgradient(nodeids, [true], intercept, [LevelPartition([true], false)], ∂𝑙covariate, ∂²𝑙covariate, slicelength, singlethread)[1][1]
     nodes0 = Vector{TreeNode{T}}()
     push!(nodes0, LeafNode{T}(grad0, true, Dict([f => LevelPartition(ones(Bool, length(getlevels(f))), true) for f in factors])))
-    state0 = TreeGrowState{T}(nodeids, nodes0, factors, ∂𝑙covariate, ∂²𝑙covariate, λ, γ, min∂²𝑙, ordstumps, pruning, slicelength, singlethread)
-    @time layers = collect(Iterators.take(Seq(TreeLayer{T}, state0, nextlayer), maxdepth))
+    state0 = TreeGrowState{T}(nodeids, nodes0, factors, ∂𝑙covariate, ∂²𝑙covariate, λ, γ, min∂²𝑙, ordstumps, pruning, leafwise, slicelength, singlethread)
+    @time layers = collect(Iterators.take(Seq(TreeLayer{T}, state0, nextlayer), maxsteps))
     xgtree = XGTree{T}(layers, λ, γ, min∂²𝑙, maxdepth, slicelength, singlethread)
     if pruning
         tree = convert(Tree{TreeNode{T}}, xgtree)

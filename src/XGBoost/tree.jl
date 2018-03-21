@@ -50,6 +50,7 @@ mutable struct TreeGrowState{T<:AbstractFloat}
     min∂²𝑙::T
     ordstumps::Bool
     pruning::Bool
+    leafwise::Bool
     slicelength::Integer
     singlethread::Bool
 end

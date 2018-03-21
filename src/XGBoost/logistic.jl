@@ -33,8 +33,8 @@ end
 
 function xgblogit(label::AbstractCovariate{S}, factors::Vector{<:AbstractFactor};
                   selector::AbstractBoolVariate = BoolVariate("", BitArray{1}(0)), μ::Real = 0.5, posweight::Real = 1.0, subsample::Real = 1.0,
-                  η::Real = 0.3, λ::Real = 1.0, γ::Real = 0.0, maxdepth::Integer = 6, nrounds::Integer = 2, ordstumps::Bool = false, pruning::Bool = true,
-                  minchildweight::Real = 1.0, caching::Bool = true, slicelength::Integer = 0, usefloat64::Bool = false,
+                  η::Real = 0.3, λ::Real = 1.0, γ::Real = 0.0, maxdepth::Integer = 6, nrounds::Integer = 2, ordstumps::Bool = false, pruning::Bool = false,
+                  minchildweight::Real = 1.0, caching::Bool = true, slicelength::Integer = 0, usefloat64::Bool = false, leafwise::Bool = false, maxleaves::Integer = 255,
                   singlethread::Bool = false) where {S<:AbstractFloat}
 
     T = usefloat64 ? Float64 : Float32
@@ -74,7 +74,7 @@ function xgblogit(label::AbstractCovariate{S}, factors::Vector{<:AbstractFactor}
         ∂𝑙 = ∂𝑙 |> f
         ∂²𝑙 = ∂²𝑙 |> f
 
-        tree, predraw = growtree(factors, ∂𝑙, ∂²𝑙, maxdepth, λ, γ, minchildweight, ordstumps, pruning, slicelength, singlethread)
+        tree, predraw = growtree(factors, ∂𝑙, ∂²𝑙, maxdepth, λ, γ, leafwise, maxleaves, minchildweight, ordstumps, pruning, slicelength, singlethread)
         fm .= muladd.(η, predraw, fm)
         predraw .= sigmoid.(fm)
         @show m

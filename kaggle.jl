@@ -14,7 +14,7 @@ using JuML
                  isnumeric = (colname, levelfreq) -> false,
                  isdatetime = (colname, levelfreq) -> colname in ["click_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
-train_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\train", preload = true)
+train_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\train", preload = false)
 test_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\test", preload = true)
 
 factors = train_df.factors
@@ -90,7 +90,7 @@ end
 hourrate = JuML.OrdinalFactor("", JuML.MapLevelFactor("hourrate", clickhour, maphourlevel), (x, y) -> parse(x) < parse(y))  
 
 modelfactors = map(toordinal, [filter((f -> JuML.getname(f) != "ip"), factors); iprate])
-@time model = xgblogit(label, [train_df["ip"]]; selector = trainset, η = 1.0, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = 1.0, minchildweight = 0.0, nrounds = 50, maxdepth = 12, ordstumps = true, pruning = false, caching = true, usefloat64 = false, singlethread = false, slicelength = 1000000);
+@time model = xgblogit(label, [JuML.OrdinalFactor(train_df["os"]), JuML.OrdinalFactor(train_df["device"]), JuML.OrdinalFactor(train_df["channel"]), JuML.OrdinalFactor(train_df["app"])]; selector = trainset, η = 0.3, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = 1.0, minchildweight = 0.0, nrounds = 100, maxdepth = 1, ordstumps = true, pruning = false, leafwise = true, maxleaves = 255, caching = true, usefloat64 = false, singlethread = false, slicelength = 1000000);
 
 @time trainauc = getauc(model.pred, label; selector = trainset)
 @time testauc = getauc(model.pred, label; selector = testset)
