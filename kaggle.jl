@@ -26,6 +26,36 @@ day = JuML.TransDateTimeCovariate("ClickDay", click_time, Dates.dayofweek)
 clickhour = factor(JuML.TransDateTimeCovariate("ClickDay", click_time, Dates.hour), 0:24)
 summary(day)
 
+# function prepfactor(factorname::String, train::DataFrame, test::DataFrame)
+#     train_f = train[factorname]
+#     test_f = test[factorname]
+#     testset = Set(JuML.getlevels(test_f))
+#     newfactor = MapLevelFactor(factorname, train_f, (level::String -> level in testset ? level : "NotInTest"))
+#     JuML.OrdinalFactor(newfactor)
+# end
+
+function fmean(f::JuML.AbstractFactor, label::JuML.AbstractCovariate, labelstats)
+    gstats = JuML.getstats([f], label)
+    m = JuML.GroupStatsCovariate(JuML.getname(f), gstats, s -> isnan(s.mean) ? labelstats.mean : s.mean)
+    JuML.factor(m, 0.0:0.004:1.0)
+end
+
+function fcount(f::JuML.AbstractFactor, label::JuML.AbstractCovariate)
+    gstats = JuML.getstats([f], label)
+    c = JuML.GroupStatsCovariate(JuML.getname(f), gstats, s -> s.obscount)
+    s = getstats(c)
+    mx = s.max
+    step = mx / 250.0
+    JuML.factor(c, 0.0:step:mx)
+end
+
+# ip = prepfactor("ip", train_df, test_df)
+# os = prepfactor("os", train_df, test_df)
+# channel = prepfactor("channel", train_df, test_df)
+# device = prepfactor("device", train_df, test_df)
+# app = prepfactor("app", train_df, test_df)
+
+
 # r = rand(Float32, length(label))
 # trainset = r .<= 0.9
 # testset = r .> 0.9
@@ -39,58 +69,32 @@ trainset = JuML.TransDateTimeBoolVariate("", click_time, t -> t <= cutoff) |> Ju
 summary(trainset)
 
 ip = train_df["ip"]
-
+os = train_df["os"]
+app = train_df["app"]
+channel = train_df["channel"]
+device = train_df["device"]
 
 labelstats = getstats(label)
 
-gstats = JuML.getstats([clickhour], label)
-length(gstats.stats)
 
-pred = JuML.GroupStatsCovariate("", gstats, s -> s.mean)
-p = collect(convert(Vector{Float32}, pred))
-summary(pred)
 
-mpred = map(pred, test_df)
+# pred = JuML.GroupStatsCovariate("", gstats, s -> s.mean)
+# p = collect(convert(Vector{Float32}, pred))
+# summary(pred)
 
-auc = JuML.getauc(collect(convert(Vector{Float32}, pred)), label)
-f = factor(covtest, 0.0:0.1:1.0)
-summary(f)
+# mpred = map(pred, test_df)
 
-getstats(train_df["device"], label)
+# auc = JuML.getauc(collect(convert(Vector{Float32}, pred)), label)
+# f = factor(covtest, 0.0:0.1:1.0)
+# summary(f)
 
 function toordinal(factor::JuML.AbstractFactor)
     JuML.OrdinalFactor(JuML.getname(factor), factor, (x, y) -> parse(x) < parse(y)) 
 end
 
-_, ipstats = getstats(ip, label);
-iplevels = JuML.getlevels(ip)
-d = Dict{String, String}()
-for (i, level) in enumerate(iplevels)
-    d[level] = string(ipstats[i].obscount)
-end
 
-mapiplevel = (level::String) -> begin
-    get(d, level, ".")
-end
-
-iprate = JuML.MapLevelFactor("iprate", ip, mapiplevel)
-
-
-_, hourstats = getstats(clickhour, label);
-hourlevels = JuML.getlevels(clickhour)
-d_hour = Dict{String, String}()
-for (i, level) in enumerate(hourlevels)
-    d_hour[level] = string(hourstats[i].mean)
-end
-
-maphourlevel = (level::String) -> begin
-    get(d_hour, level, string(labelstats.mean))
-end
-
-hourrate = JuML.OrdinalFactor("", JuML.MapLevelFactor("hourrate", clickhour, maphourlevel), (x, y) -> parse(x) < parse(y))  
-
-modelfactors = map(toordinal, [filter((f -> JuML.getname(f) != "ip"), factors); iprate])
-@time model = xgblogit(label, [JuML.OrdinalFactor(train_df["os"]), JuML.OrdinalFactor(train_df["device"]), JuML.OrdinalFactor(train_df["channel"]), JuML.OrdinalFactor(train_df["app"])]; selector = trainset, η = 0.3, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = 1.0, minchildweight = 0.0, nrounds = 100, maxdepth = 1, ordstumps = true, pruning = false, leafwise = true, maxleaves = 255, caching = true, usefloat64 = false, singlethread = false, slicelength = 1000000);
+modelfactors = [fmean(ip, label, labelstats), fcount(ip, label), fmean(os, label, labelstats), fcount(os, label), fmean(device, label, labelstats), fcount(device, label), fmean(channel, label, labelstats), fcount(channel, label), fmean(app, label, labelstats), fcount(app, label)]
+@time model = xgblogit(label, modelfactors; selector = trainset, η = 0.3, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = 1.0, minchildweight = 0.0, nrounds = 50, maxdepth = 1, ordstumps = true, pruning = false, leafwise = true, maxleaves = 6, caching = true, usefloat64 = false, singlethread = false, slicelength = 1000000);
 
 @time trainauc = getauc(model.pred, label; selector = trainset)
 @time testauc = getauc(model.pred, label; selector = testset)
