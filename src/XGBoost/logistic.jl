@@ -140,8 +140,8 @@ function cvxgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor},
     res
 end
 
-function predict(model::XGModel{T}, dataframe::AbstractDataFrame; μ::Real = 0.5, posweight::Real = 1.0,) where {T<:AbstractFloat}
-    trees = model.trees
+function predict(model::XGModel{T}, dataframe::AbstractDataFrame; μ::Real = 0.5, posweight::Real = 1.0, nrounds::Integer = 0) where {T<:AbstractFloat}
+    trees = nrounds == 0 ? model.trees : model.trees[1:nrounds]
     μ = T(μ)
     posweight = T(posweight)
     η = model.η

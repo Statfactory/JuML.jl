@@ -7,7 +7,7 @@ end
 
 function slice(boolvar::GroupStatsBoolVariate, fromobs::Integer, toobs::Integer, slicelength::Integer) 
     factors = widenfactors(boolvar.groupstats.factors)
-    dims = Tuple([length(getlevels(factor)) + 1 for factor in factors])
+    dims = Tuple(boolvar.groupstats.dims) #Tuple([length(getlevels(factor)) + 1 for factor in factors])
     k = length(factors)
     f = boolvar.transform
     slicelength = verifyslicelength(fromobs, toobs, slicelength) 

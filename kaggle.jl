@@ -6,16 +6,16 @@ using JuML
                  isnumeric = (colname, levelfreq) -> colname in ["is_attributed"],
                  isdatetime = (colname, levelfreq) -> colname in ["click_time", "attributed_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
-@time importcsv("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\train.csv";
+@time importcsv("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\train.csv";
                  isnumeric = (colname, levelfreq) -> colname in ["is_attributed"],
                  isdatetime = (colname, levelfreq) -> colname in ["click_time", "attributed_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
-@time importcsv("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test.csv";
+@time importcsv("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\test.csv";
                  isnumeric = (colname, levelfreq) -> false,
                  isdatetime = (colname, levelfreq) -> colname in ["click_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
 train_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\train", preload = false)
-test_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\test", preload = true)
+test_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\test", preload = false)
 
 factors = train_df.factors
 label = train_df["is_attributed"]
@@ -94,7 +94,7 @@ end
 
 
 modelfactors = [fmean(ip, label, labelstats), fcount(ip, label), fmean(os, label, labelstats), fcount(os, label), fmean(device, label, labelstats), fcount(device, label), fmean(channel, label, labelstats), fcount(channel, label), fmean(app, label, labelstats), fcount(app, label)]
-@time model = xgblogit(label, modelfactors; selector = trainset, η = 0.3, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = 1.0, minchildweight = 0.0, nrounds = 50, maxdepth = 1, ordstumps = true, pruning = false, leafwise = true, maxleaves = 6, caching = true, usefloat64 = false, singlethread = false, slicelength = 1000000);
+@time model = xgblogit(label, modelfactors; selector = trainset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = 1.0, minchildweight = 0.0, nrounds = 200, maxdepth = 1, ordstumps = true, pruning = false, leafwise = true, maxleaves = 6, caching = true, usefloat64 = false, singlethread = false, slicelength = 1000000);
 
 @time trainauc = getauc(model.pred, label; selector = trainset)
 @time testauc = getauc(model.pred, label; selector = testset)
@@ -105,7 +105,7 @@ mean(pred)
 is_attr = Covariate("is_attributed", pred)
 click_id = test_df["click_id"]
 sub_df = DataFrame(length(pred), [click_id], [is_attr], JuML.AbstractBoolVariate[], JuML.AbstractDateTimeVariate[])
-JuML.tocsv("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\submission.csv", sub_df)
+JuML.tocsv("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\submission.csv", sub_df)
 
 
 

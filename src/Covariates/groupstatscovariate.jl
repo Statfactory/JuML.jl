@@ -15,7 +15,7 @@ end
 
 function slice(covariate::GroupStatsCovariate{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:AbstractFloat}
     factors = widenfactors(covariate.groupstats.factors)
-    dims = Tuple([length(getlevels(factor)) + 1 for factor in factors])
+    dims = Tuple(covariate.groupstats.dims) # Tuple([length(getlevels(factor)) + 1 for factor in factors])
     k = length(factors)
     f = covariate.transform
     slicelength = verifyslicelength(fromobs, toobs, slicelength) 

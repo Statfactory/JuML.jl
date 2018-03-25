@@ -35,6 +35,8 @@ struct XGTree{T<:AbstractFloat}
     γ::T
     min∂²𝑙::T
     maxdepth::Integer
+    leafwise::Bool
+    maxleaves::Integer
     slicelength::Integer
     singlethread::Bool
 end

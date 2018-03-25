@@ -462,7 +462,7 @@ end
 
 function predict(tree::XGTree{T}, dataframe::AbstractDataFrame) where {T<:AbstractFloat}
     len = length(dataframe)
-    maxnodecount = 2 ^ tree.maxdepth
+    maxnodecount = tree.leafwise ? tree.maxleaves : 2 ^ tree.maxdepth
     nodeids = maxnodecount <= typemax(UInt8) ? ones(UInt8, len) : (maxnodecount <= typemax(UInt16) ? ones(UInt16, len) : ones(UInt32, len))
     nodes = Vector{TreeNode{T}}()
     factormap = Dict{AbstractFactor, Tuple{AbstractFactor, Dict{Int64, Int64}, Set{Int64}, Int64}}()
@@ -499,12 +499,12 @@ function growtree(factors::Vector{<:AbstractFactor}, ∂𝑙covariate::AbstractC
     push!(nodes0, LeafNode{T}(grad0, true, Dict([f => LevelPartition(ones(Bool, length(getlevels(f))), true) for f in factors])))
     state0 = TreeGrowState{T}(nodeids, nodes0, factors, ∂𝑙covariate, ∂²𝑙covariate, λ, γ, min∂²𝑙, ordstumps, pruning, leafwise, slicelength, singlethread)
     @time layers = collect(Iterators.take(Seq(TreeLayer{T}, state0, nextlayer), maxsteps))
-    xgtree = XGTree{T}(layers, λ, γ, min∂²𝑙, maxdepth, slicelength, singlethread)
+    xgtree = XGTree{T}(layers, λ, γ, min∂²𝑙, maxdepth, leafwise, maxleaves, slicelength, singlethread)
     if pruning
         tree = convert(Tree{TreeNode{T}}, xgtree)
         pruned = prune(tree, λ, γ)
         prunedlayers = map((nodes -> TreeLayer{T}(nodes)) , convert(Vector{Vector{TreeNode{T}}}, convert(List{List{TreeNode{T}}}, rebalance(pruned, maxdepth))))
-        xgtree = XGTree{T}(prunedlayers, λ, γ, min∂²𝑙, maxdepth, slicelength, singlethread)
+        xgtree = XGTree{T}(prunedlayers, λ, γ, min∂²𝑙, maxdepth, leafwise, maxleaves, slicelength, singlethread)
         pred = predict(xgtree.layers[end], nodeids, λ)
         xgtree, pred
     else

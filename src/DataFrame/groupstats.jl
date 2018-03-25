@@ -4,6 +4,7 @@ struct GroupStats
     stats::Vector{Tuple{String, CovariateStats}}
     linindexmap::Dict{Int64, Int64}
     subindexmap::Vector{Vector{Int64}}
+    dims::Vector{Int64}
 end
 
 function Base.getindex(gstats::GroupStats, index::Integer)
@@ -68,7 +69,7 @@ function getstats(factors::Vector{<:AbstractFactor}, covariate::AbstractCovariat
         stats.mean = stats.sum / (stats.obscount - stats.nancount)
         stats.std = sqrt(((stats.sum2 - stats.sum * stats.sum / (stats.obscount - stats.nancount)) / (stats.obscount - stats.nancount - 1)))
     end
-    GroupStats(factors, covariate, resstats, reslinindexmap, subindexmap)
+    GroupStats(factors, covariate, resstats, reslinindexmap, subindexmap, [dims...])
 end
 
 function Base.map(groupstats::GroupStats, dataframe::AbstractDataFrame)
@@ -81,5 +82,5 @@ function Base.map(groupstats::GroupStats, dataframe::AbstractDataFrame)
         [findfirst(baselevels, level) for level in levels]
     end
     subindexmap = [maplevels(getlevels(f), factors[i]) for (i, f) in enumerate(mappedfactors)]
-    GroupStats(factors, groupstats.covariate, groupstats.stats, groupstats.linindexmap, subindexmap)
+    GroupStats(mappedfactors, groupstats.covariate, groupstats.stats, groupstats.linindexmap, subindexmap, groupstats.dims)
 end
