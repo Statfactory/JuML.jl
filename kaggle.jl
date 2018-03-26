@@ -14,10 +14,11 @@ using JuML
                  isnumeric = (colname, levelfreq) -> false,
                  isdatetime = (colname, levelfreq) -> colname in ["click_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
-train_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\train", preload = false)
-test_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\test", preload = false)
+train_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\train", preload = true)
+test_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test", preload = true)
 
 factors = train_df.factors
+
 label = train_df["is_attributed"]
 click_time = train_df["click_time"]
 summary(click_time)
@@ -34,19 +35,24 @@ summary(day)
 #     JuML.OrdinalFactor(newfactor)
 # end
 
-function fmean(f::JuML.AbstractFactor, label::JuML.AbstractCovariate, labelstats)
-    gstats = JuML.getstats([f], label)
+function fmean(f::JuML.AbstractFactor, label::JuML.AbstractCovariate, labelstats, gstats)
+    #gstats = JuML.getstats([f], label)
     m = JuML.GroupStatsCovariate(JuML.getname(f), gstats, s -> isnan(s.mean) ? labelstats.mean : s.mean)
     JuML.factor(m, 0.0:0.004:1.0)
 end
 
-function fcount(f::JuML.AbstractFactor, label::JuML.AbstractCovariate)
-    gstats = JuML.getstats([f], label)
+function fcount(f::JuML.AbstractFactor, label::JuML.AbstractCovariate, gstats)
+    #gstats = JuML.getstats([f], label)
     c = JuML.GroupStatsCovariate(JuML.getname(f), gstats, s -> s.obscount)
     s = getstats(c)
     mx = s.max
     step = mx / 250.0
     JuML.factor(c, 0.0:step:mx)
+end
+
+function maplevels(trainfactor::JuML.AbstractFactor, testfactor::JuML.AbstractFactor)
+    testlevels = Set(JuML.getlevels(testfactor))
+    JuML.MapLevelFactor(JuML.getname(trainfactor), trainfactor, level -> level in testlevels ? level : "NotInTest")
 end
 
 # ip = prepfactor("ip", train_df, test_df)
@@ -68,11 +74,23 @@ trainset = JuML.TransDateTimeBoolVariate("", click_time, t -> t <= cutoff) |> Ju
 #testset = JuML.TransDateTimeBoolVariate("", click_time, t -> t > cutoff) |> JuML.cache;
 summary(trainset)
 
-ip = train_df["ip"]
-os = train_df["os"]
-app = train_df["app"]
-channel = train_df["channel"]
-device = train_df["device"]
+testip = test_df["ip"]
+testos = test_df["os"]
+testapp = test_df["app"]
+testchannel = test_df["channel"]
+testdevice = test_df["device"]
+
+ip = maplevels(train_df["ip"], testip)
+os = maplevels(train_df["os"], testos)
+app = maplevels(train_df["app"], testapp)
+channel = maplevels(train_df["channel"], testchannel)
+device = maplevels(train_df["device"], testdevice)
+
+ipgstats = JuML.getstats([ip], label)
+osgstats = JuML.getstats([os], label)
+appgstats = JuML.getstats([app], label)
+channelgstats = JuML.getstats([channel], label)
+devicegstats = JuML.getstats([device], label)
 
 labelstats = getstats(label)
 
@@ -93,8 +111,8 @@ function toordinal(factor::JuML.AbstractFactor)
 end
 
 
-modelfactors = [fmean(ip, label, labelstats), fcount(ip, label), fmean(os, label, labelstats), fcount(os, label), fmean(device, label, labelstats), fcount(device, label), fmean(channel, label, labelstats), fcount(channel, label), fmean(app, label, labelstats), fcount(app, label)]
-@time model = xgblogit(label, modelfactors; selector = trainset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = 1.0, minchildweight = 0.0, nrounds = 200, maxdepth = 1, ordstumps = true, pruning = false, leafwise = true, maxleaves = 6, caching = true, usefloat64 = false, singlethread = false, slicelength = 1000000);
+modelfactors = [fmean(ip, label, labelstats, ipgstats), fcount(ip, label, ipgstats), fmean(os, label, labelstats, osgstats), fcount(os, label, osgstats), fmean(device, label, labelstats, devicegstats), fcount(device, label, devicegstats), fmean(channel, label, labelstats, channelgstats), fcount(channel, label, channelgstats), fmean(app, label, labelstats, appgstats), fcount(app, label, appgstats)]
+@time model = xgblogit(label, modelfactors; selector = trainset, η = 0.3, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = 1.0, minchildweight = 0.0, nrounds = 10, maxdepth = 1, ordstumps = true, pruning = false, leafwise = true, maxleaves = 10, caching = true, usefloat64 = true, singlethread = false, slicelength = 1000000);
 
 @time trainauc = getauc(model.pred, label; selector = trainset)
 @time testauc = getauc(model.pred, label; selector = testset)
@@ -105,7 +123,7 @@ mean(pred)
 is_attr = Covariate("is_attributed", pred)
 click_id = test_df["click_id"]
 sub_df = DataFrame(length(pred), [click_id], [is_attr], JuML.AbstractBoolVariate[], JuML.AbstractDateTimeVariate[])
-JuML.tocsv("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\submission.csv", sub_df)
+JuML.tocsv("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\submission.csv", sub_df)
 
 
 

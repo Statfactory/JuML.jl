@@ -464,25 +464,26 @@ function predict(tree::XGTree{T}, dataframe::AbstractDataFrame) where {T<:Abstra
     len = length(dataframe)
     maxnodecount = tree.leafwise ? tree.maxleaves : 2 ^ tree.maxdepth
     nodeids = maxnodecount <= typemax(UInt8) ? ones(UInt8, len) : (maxnodecount <= typemax(UInt16) ? ones(UInt16, len) : ones(UInt32, len))
-    nodes = Vector{TreeNode{T}}()
-    factormap = Dict{AbstractFactor, Tuple{AbstractFactor, Dict{Int64, Int64}, Set{Int64}, Int64}}()
-    for layer in tree.layers
-        for node in layer.nodes
-            if isa(node, SplitNode) && !(node.factor in keys(factormap))
-                mappedfactor = map(node.factor, dataframe) |> cache
-                levelmap = getlevelmap(node.factor, mappedfactor)
-                newind = getnewindices(node.factor, mappedfactor)
-                levelcount = length(getlevels(mappedfactor))
-                factormap[node.factor] = (mappedfactor, levelmap, newind, levelcount)
-            end
-        end
-    end
+    #nodes = Vector{TreeNode{T}}()
+    # factormap = Dict{AbstractFactor, Tuple{AbstractFactor, Dict{Int64, Int64}, Set{Int64}, Int64}}()
+    # for layer in tree.layers
+    #     for node in layer.nodes
+    #         if isa(node, SplitNode) && !(node.factor in keys(factormap))
+    #             mappedfactor = map(node.factor, dataframe) |> cache
+    #             levelmap = getlevelmap(node.factor, mappedfactor)
+    #             newind = getnewindices(node.factor, mappedfactor)
+    #             levelcount = length(getlevels(mappedfactor))
+    #             factormap[node.factor] = (mappedfactor, levelmap, newind, levelcount)
+    #         end
+    #     end
+    # end
 
     for layer in tree.layers
-        nodes = [map(n, dataframe, factormap) for n in layer.nodes]
-        splitnodeids!(nodeids, TreeLayer{T}(nodes), tree.slicelength, tree.singlethread)
+        #nodes = [map(n, dataframe, factormap) for n in layer.nodes]
+        #splitnodeids!(nodeids, TreeLayer{T}(nodes), tree.slicelength, tree.singlethread)
+        splitnodeids!(nodeids, layer, tree.slicelength, tree.singlethread)
     end
-    predict(TreeLayer{T}(nodes), nodeids, tree.λ)
+    predict(tree.layers[end], nodeids, tree.λ)
 end
 
 function growtree(factors::Vector{<:AbstractFactor}, ∂𝑙covariate::AbstractCovariate{T},

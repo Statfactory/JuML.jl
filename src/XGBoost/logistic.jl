@@ -151,7 +151,31 @@ function predict(model::XGModel{T}, dataframe::AbstractDataFrame; μ::Real = 0.5
     else
         fill!(f0, T(logitraw(μ, posweight)))
     end
+
+    factormap = Dict{AbstractFactor, Tuple{AbstractFactor, Dict{Int64, Int64}, Set{Int64}, Int64}}()
     for tree in trees
+        for layer in tree.layers
+            for node in layer.nodes
+                if isa(node, SplitNode) && !(node.factor in keys(factormap))
+                    mappedfactor = map(node.factor, dataframe)
+                    levelmap = getlevelmap(node.factor, mappedfactor)
+                    newind = getnewindices(node.factor, mappedfactor)
+                    levelcount = length(getlevels(mappedfactor))
+                    factormap[node.factor] = (mappedfactor, levelmap, newind, levelcount)
+                end
+            end
+        end
+    end
+
+    mappedfactors = map(cache, widenfactors(collect(map((x -> x[1]), values(factormap)))))
+    for (i, f) in enumerate(keys(factormap))
+        _, levelmap, newind, levelcount = factormap[f]
+        factormap[f] = mappedfactors[i], levelmap, newind, levelcount
+    end
+
+    mappedtrees = [XGTree{T}(map((layer -> TreeLayer{T}([map(n, dataframe, factormap) for n in layer.nodes])), tree.layers), tree.λ, tree.γ, tree.min∂²𝑙, tree.maxdepth, tree.leafwise, tree.maxleaves, tree.slicelength, tree.singlethread) for tree in trees]
+
+    for tree in mappedtrees
         predraw = predict(tree, dataframe)
         f0 .= muladd.(η, predraw, f0)
     end
