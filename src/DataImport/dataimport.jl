@@ -5,6 +5,7 @@ abstract type ColumnImporter end
 
 mutable struct CatImporter <: ColumnImporter
     colname::AbstractString
+    colindex::Int64
     filepath::String
     length::Int64
     levelmap::Dict{SubString{String}, Int64}
@@ -19,6 +20,7 @@ end
 
 mutable struct NumImporter <: ColumnImporter
     colname::AbstractString
+    colindex::Int64
     filepath::String
     length::Int64
     nancount::Int64
@@ -28,16 +30,16 @@ end
 
 mutable struct DateTimeImporter <: ColumnImporter
     colname::AbstractString
+    colindex::Int64
     filepath::String
     length::Int64
     dtformat::Dates.DateFormat
     nas::Set{String}
 end
 
-function CatImporter(colname::AbstractString, outfolder::String, isnumeric::Function, isdatetime::Function,
+function CatImporter(colname::AbstractString, colindex::Int64, filepath::String, len::Int64, isnumeric::Function, isdatetime::Function,
                      nas::Set{String}, isdropped)
-    filepath = joinpath(outfolder, "$(randstring(10)).dat")
-    CatImporter(colname, filepath, 0, Dict{SubString{String}, Int64}(MISSINGLEVEL => 0), Dict{Int64, SubString{String}}(0 => MISSINGLEVEL), Dict{SubString{String}, Int64}(), isdropped, isnumeric, isdatetime, nas, 8)
+    CatImporter(colname, colindex, filepath, len, Dict{SubString{String}, Int64}(MISSINGLEVEL => 0), Dict{Int64, SubString{String}}(0 => MISSINGLEVEL), Dict{SubString{String}, Int64}(), isdropped, isnumeric, isdatetime, nas, 8)
 end
 
 struct DataColumnInfo
@@ -121,12 +123,13 @@ function todatetimecolumn(::Type{T}, dtformat::Dates.DateFormat, levelindexmap::
     end
 end
 
-function importlevels(colimporter::NumImporter, datalines::Vector{Vector{SubString{String}}}, colindex::Integer)
+function importlevels(colimporter::NumImporter, datalines::Vector{Vector{SubString{String}}})
     iostream = open(colimporter.filepath, "a")
     collength = colimporter.length
     nas = colimporter.nas
+    colindex = colimporter.colindex
     for line in datalines
-        level = strip(strip(line[colindex]), ['"'])
+        level = colindex == 0 ? "" : strip(strip(line[colindex]), ['"'])
         level in nas ? write(iostream, NaN32) : begin
             v = tryparse(Float32, level)
             if isnull(v)
@@ -142,13 +145,14 @@ function importlevels(colimporter::NumImporter, datalines::Vector{Vector{SubStri
     colimporter
 end
 
-function importlevels(colimporter::DateTimeImporter, datalines::Vector{Vector{SubString{String}}}, colindex::Integer)
+function importlevels(colimporter::DateTimeImporter, datalines::Vector{Vector{SubString{String}}})
     iostream = open(colimporter.filepath, "a")
     collength = colimporter.length
     dtformat = colimporter.dtformat
     nas = colimporter.nas
+    colindex = colimporter.colindex
     for line in datalines
-        level = strip(strip(line[colindex]), ['"'])
+        level = colindex == 0 ? "" : strip(strip(line[colindex]), ['"'])
         ms = try
             level in nas ? zero(Int64) : begin
                 dt = DateTime(level, dtformat)
@@ -165,7 +169,7 @@ function importlevels(colimporter::DateTimeImporter, datalines::Vector{Vector{Su
     colimporter
 end
 
-function importlevels(colimporter::CatImporter, datalines::Vector{Vector{SubString{String}}}, colindex::Integer)
+function importlevels(colimporter::CatImporter, datalines::Vector{Vector{SubString{String}}})
     if !colimporter.isdropped
 
         levelmap = colimporter.levelmap
@@ -174,10 +178,11 @@ function importlevels(colimporter::CatImporter, datalines::Vector{Vector{SubStri
         nas = colimporter.nas
         iostream = open(colimporter.filepath, "a")
         collength = colimporter.length
+        colindex = colimporter.colindex
 
         for line in datalines
             bitwidth = colimporter.bitwidth
-            level = strip(strip(line[colindex]), ['"'])
+            level = colindex == 0 ? "" : strip(strip(line[colindex]), ['"'])
             if level in nas
                 level = MISSINGLEVEL
             end
@@ -230,7 +235,7 @@ function importlevels(colimporter::CatImporter, datalines::Vector{Vector{SubStri
                 tonumcolumn(UInt8, levelindexmap, colimporter.filepath, newpath, collength)
             end
             rm(colimporter.filepath)
-            colimporter = NumImporter(colimporter.colname, newpath, collength, 0, 0, nas)
+            colimporter = NumImporter(colimporter.colname, colimporter.colindex, newpath, collength, 0, 0, nas)
         else
             isdt, dtformatstr = colimporter.isdatetime(colimporter.colname, levelfreq)
             dtformat = Dates.DateFormat(dtformatstr)
@@ -242,7 +247,7 @@ function importlevels(colimporter::CatImporter, datalines::Vector{Vector{SubStri
                     todatetimecolumn(UInt8, dtformat, levelindexmap, colimporter.filepath, newpath, collength)
                 end
                 rm(colimporter.filepath)
-                colimporter = DateTimeImporter(colimporter.colname, newpath, collength, dtformat, nas)
+                colimporter = DateTimeImporter(colimporter.colname, colimporter.colindex, newpath, collength, dtformat, nas)
             end
         end
     end
@@ -252,7 +257,7 @@ end
 function importdata(colimporters::Vector{ColumnImporter}, datalines::Vector{Vector{SubString{String}}})
     colcount = length(colimporters)
     for i = 1:colcount
-        colimporters[i] = importlevels(colimporters[i], datalines, i)
+        colimporters[i] = importlevels(colimporters[i], datalines)
     end
     colimporters
 end
@@ -275,24 +280,60 @@ function importcsv(path::String; path2::String = "", outname::String = "", maxob
     outtempfolder = joinpath(dirname(path), randstring(10))
     mkpath(outtempfolder)
     iostream = open(path)
-    lineseq = maxobs > -1 ? Iterators.take(Seq(String, iostream, nextline), maxobs + 1) : begin 
-        if path2 == ""
-            Seq(String, iostream, nextline)
-        else
-            s1 = Seq(String, iostream, nextline)
-            iostream2 = open(path2)
-            s2 = Seq(String, iostream2, nextline)
-            _, s2 = tryread(s2)
-            concat(s1, s2)
-        end
-    end
+    lineseq = maxobs > -1 ? Iterators.take(Seq(String, iostream, nextline), maxobs + 1) : Seq(String, iostream, nextline) 
     lines = map((line -> split(line, ",")), lineseq, Vector{SubString{String}})
     colnames, datalines = lines |> tryread
     if !isnull(colnames)
         colnames = map((c -> strip(strip(c), ['"'])), get(colnames))
-        colimporters::Vector{ColumnImporter} = map((colname -> CatImporter(colname, outtempfolder, isnumeric, isdatetime, nas, colname in drop)), colnames)
+        colimporters::Vector{ColumnImporter} = map((x -> CatImporter(x[2], x[1], joinpath(outtempfolder, "$(randstring(10)).dat"), 0, isnumeric, isdatetime, nas, x[2] in drop)), enumerate(colnames))
         colimporters = fold(importdata, colimporters, chunkbysize(datalines, chunksize))
     end
+    if path2 != ""
+        iostream2 = open(path2)
+        line2seq = Seq(String, iostream2, nextline)
+        lines2 = map((line -> split(line, ",")), line2seq, Vector{SubString{String}})
+        colnames2, datalines2 = lines2 |> tryread
+        if !isnull(colnames2)
+            currlen = colimporters[1].length
+            colnames2 = map((c -> strip(strip(c), ['"'])), get(colnames2))
+            colimporters2::Vector{ColumnImporter} = map(enumerate(colnames2)) do x
+                colindex, colname = x
+                i = findfirst((c -> c.colname == colname), colimporters)
+                if i > 0
+                    colimp = colimporters[i]
+                    colimp.colindex = colindex
+                    colimp
+                else
+                    if isnumeric(colname, Dict{SubString{String}, Int64}())
+                        newpath = joinpath(outtempfolder, "$(randstring(10)).dat")
+                        open(newpath, "a") do tofile
+                            for i in 1:currlen
+                                write(tofile, NaN32)
+                            end
+                        end
+                        NumImporter(colname, colindex, newpath, currlen, 0, 0, nas)
+                    else
+                        newpath = joinpath(outtempfolder, "$(randstring(10)).dat")
+                        open(newpath, "a") do tofile
+                            for i in 1:currlen
+                                write(tofile, zero(UInt8))
+                            end
+                        end
+                        CatImporter(colname, colindex, newpath, currlen, isnumeric, isdatetime, nas, colname in drop)
+                    end
+                end
+            end
+            for colimp in colimporters
+                if findfirst((c -> c.colname == colimp.colname), colimporters2) == 0
+                    colimp.colindex = 0
+                    push!(colimporters2, colimp)
+                end
+            end
+            colimporters2 = fold(importdata, colimporters2, chunkbysize(datalines2, chunksize))
+            colimporters = colimporters2
+        end
+    end
+
     colimporters = filter(colimporters) do colimp
         isa(colimp, NumImporter) || isa(colimp, DateTimeImporter) || !colimp.isdropped
     end

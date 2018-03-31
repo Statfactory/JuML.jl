@@ -305,7 +305,8 @@ end
 function findbestsplit(state::TreeGrowState{T}) where {T<:AbstractFloat}
 
     nodecansplit = [n.cansplit for n in state.nodes]
-    bestgain = zero(T)
+    bestgain = T(0.5) * state.γ
+    currloss = [getloss(n, state.λ) for n in state.nodes]
     foldl(state.nodes, enumerate(state.factors)) do currsplit, nfactor
         n, factor = nfactor
         partitions = [node.partitions[factor] for node in state.nodes]
@@ -316,7 +317,7 @@ function findbestsplit(state::TreeGrowState{T}) where {T<:AbstractFloat}
 
         res = Vector{TreeNode{T}}(length(newsplit))
         if state.leafwise
-            gain = [isnull(newsplit[i]) ? T(NaN32) : getloss(state.nodes[i], state.λ) - get(newsplit[i]).loss for i in 1:length(newsplit)]
+            gain = [isnull(newsplit[i]) ? T(NaN32) : currloss[i] - get(newsplit[i]).loss for i in 1:length(newsplit)]
             (maxgain, imax) = findmax(gain)
             if maxgain > bestgain
                 bestgain = maxgain
@@ -333,9 +334,15 @@ function findbestsplit(state::TreeGrowState{T}) where {T<:AbstractFloat}
                 end
             end
         else
+            mingain = T(0.5) * state.γ
             @inbounds for i in 1:length(newsplit)
-                if !isnull(newsplit[i]) && get(newsplit[i]).loss < getloss(currsplit[i], state.λ)
-                   res[i] = get(newsplit[i]) 
+                if !isnull(newsplit[i])
+                   newloss = get(newsplit[i]).loss
+                   if currloss[i] - newloss > mingain && newloss < getloss(currsplit[i], state.λ)
+                       res[i] = get(newsplit[i])
+                   else
+                       res[i] = currsplit[i] 
+                   end
                 else
                    res[i] = currsplit[i] 
                 end

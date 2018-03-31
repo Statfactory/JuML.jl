@@ -502,3 +502,22 @@ function tocsv(path::String, dataframe::AbstractDataFrame)
     close(iostream)
 end
 
+function Base.eltype(x::StatVariate)
+    if isa(x, AbstractFactor{UInt8})
+        UInt8
+    elseif isa(x, AbstractFactor{UInt16})
+        UInt16
+    elseif isa(x, AbstractFactor{UInt32})
+        UInt32
+    elseif isa(x, AbstractCovariate{Float32})
+        Float32
+    elseif isa(x, AbstractCovariate{Float64})
+        Float64
+    elseif isa(x, AbstractBoolVariate)
+        Bool
+    elseif isa(x, AbstractDateTimeVariate)
+        Int64
+    end
+end
+
+

@@ -32,7 +32,9 @@ function logloss(y::AbstractFloat, ŷ::AbstractFloat)
 end
 
 function xgblogit(label::AbstractCovariate{S}, factors::Vector{<:AbstractFactor};
-                  selector::AbstractBoolVariate = BoolVariate("", BitArray{1}(0)), μ::Real = 0.5, posweight::Real = 1.0, subsample::Real = 1.0,
+                  trainselector::AbstractBoolVariate = BoolVariate("", BitArray{1}(0)), 
+                  validselector::AbstractBoolVariate = BoolVariate("", BitArray{1}(0)),
+                  μ::Real = 0.5, posweight::Real = 1.0, subsample::Real = 1.0,
                   η::Real = 0.3, λ::Real = 1.0, γ::Real = 0.0, maxdepth::Integer = 6, nrounds::Integer = 2, ordstumps::Bool = false, pruning::Bool = false,
                   minchildweight::Real = 1.0, caching::Bool = true, slicelength::Integer = 0, usefloat64::Bool = false, leafwise::Bool = false, maxleaves::Integer = 255,
                   singlethread::Bool = false) where {S<:AbstractFloat}
@@ -41,7 +43,7 @@ function xgblogit(label::AbstractCovariate{S}, factors::Vector{<:AbstractFactor}
     factors = caching ? map(cache, widenfactors(filter((f -> getname(f) != getname(label)), factors))) : filter((f -> getname(f) != getname(label)), factors)
     label = caching ? cache(label) : label
     slicelength = slicelength <= 0 ? length(label) : slicelength
-    selector = caching ? (selector |> cache) : selector
+    trainselector = caching ? (trainselector |> cache) : trainselector
     λ = T(λ)
     γ = T(γ)
     η = T(η)
@@ -55,7 +57,7 @@ function xgblogit(label::AbstractCovariate{S}, factors::Vector{<:AbstractFactor}
     else
         fill!(f0, T(logitraw(μ, posweight)))
     end
-    zerocov = ConstCovariate(zero(T), length(selector))
+    zerocov = ConstCovariate(zero(T), length(trainselector))
     poswgtcov = ifelse(TransCovBoolVariate("", label, x -> x == one(S)), ConstCovariate(posweight, length(label)), ConstCovariate(one(S), length(label))) |> cache
     fm, trees = fold((f0, Vector{XGTree}()), Seq(1:nrounds)) do x, m
         fm, trees = x
@@ -63,10 +65,10 @@ function xgblogit(label::AbstractCovariate{S}, factors::Vector{<:AbstractFactor}
 
         f = caching ? cache : identity
 
-        trainselector = subsample == one(T) ? selector : (selector .& (TransCovBoolVariate("", RandCovariate(length(label)), x -> x .<= subsample)))
+        #trainselector = subsample == one(T) ? selector : (selector .& (TransCovBoolVariate("", RandCovariate(length(label)), x -> x .<= subsample)))
 
-        ∂𝑙 = length(selector) == 0 ? Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) |> f : ifelse(trainselector, Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙), zerocov)
-        ∂²𝑙 = length(selector) == 0 ? TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙) |> f : ifelse(trainselector, TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙), zerocov)
+        ∂𝑙 = length(trainselector) == 0 ? Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) |> f : ifelse(trainselector, Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙), zerocov)
+        ∂²𝑙 = length(trainselector) == 0 ? TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙) |> f : ifelse(trainselector, TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙), zerocov)
         if posweight != one(T)
             ∂𝑙 = Trans2Covariate(T, "∂𝑙", ∂𝑙, poswgtcov, *)
             ∂²𝑙 = Trans2Covariate(T, "∂²𝑙", ∂²𝑙, poswgtcov, *)
@@ -78,8 +80,8 @@ function xgblogit(label::AbstractCovariate{S}, factors::Vector{<:AbstractFactor}
         fm .= muladd.(η, predraw, fm)
         predraw .= sigmoid.(fm)
         @show m
-        if length(selector) > 0
-            @show trainauc, testauc = getauc(predraw, label, selector; slicelength = slicelength)
+        if length(trainselector) > 0 && length(validselector) > 0
+            @show trainauc, testauc = getauc(predraw, label, trainselector, validselector; slicelength = slicelength)
         else
             @show auc = getauc(predraw, label; slicelength = slicelength)
         end
@@ -218,12 +220,12 @@ function getauc(pred::Vector{T}, label::AbstractCovariate{S}; slicelength::Integ
     0.5 * (sum((tpr1 .+ tpr2) .* (fpr2 .- fpr1)) + area0)
 end
 
-function getauc(pred::Vector{T}, label::AbstractCovariate{S}, selector::AbstractBoolVariate; slicelength::Integer = SLICELENGTH) where {T <: AbstractFloat} where {S <: AbstractFloat}
+function getauc(pred::Vector{T}, label::AbstractCovariate{S}, trainselector::AbstractBoolVariate, validselector::AbstractBoolVariate; slicelength::Integer = SLICELENGTH) where {T <: AbstractFloat} where {S <: AbstractFloat}
     labelslices = slice(label, 1, length(label), slicelength)
-    sellen = length(selector) 
+    sellen = length(trainselector) 
 
-    lentrue = begin
-        fold(0, slice(selector, 1, sellen, slicelength)) do acc, slice
+    trainlentrue = begin
+        fold(0, slice(trainselector, 1, sellen, slicelength)) do acc, slice
             res = acc
             for v in slice
                 if v    
@@ -233,22 +235,33 @@ function getauc(pred::Vector{T}, label::AbstractCovariate{S}, selector::Abstract
             res
         end
     end
-    lenfalse = sellen - lentrue
+
+    validlentrue = begin
+        fold(0, slice(validselector, 1, sellen, slicelength)) do acc, slice
+            res = acc
+            for v in slice
+                if v    
+                    res += 1
+                end
+            end
+            res
+        end
+    end
 
     uniqcountin = Dict{T, Int64}()
     labelaggin = Dict{T, S}()
     uniqcountout = Dict{T, Int64}()
     labelaggout = Dict{T, S}()
 
-    zipslices = zip2(labelslices, slice(selector, 1, sellen, slicelength))
+    zipslices = zip3(labelslices, slice(trainselector, 1, sellen, slicelength), slice(validselector, 1, sellen, slicelength))
     fold(0, zipslices) do offset, slice
-        labelslice, selslice = slice
+        labelslice, trainselslice, validselslice = slice
         for i in 1:length(labelslice)
-            if selslice[i]
+            if trainselslice[i]
                 v = pred[offset + i]
                 uniqcountin[v] = get(uniqcountin, v, 0) + 1
                 labelaggin[v] = get(labelaggin, v, zero(S)) + labelslice[i]              
-            else
+            elseif validselslice[i]
                 v = pred[offset + i]
                 uniqcountout[v] = get(uniqcountout, v, 0) + 1
                 labelaggout[v] = get(labelaggout, v, zero(S)) + labelslice[i]  
@@ -271,7 +284,7 @@ function getauc(pred::Vector{T}, label::AbstractCovariate{S}, selector::Abstract
         cumcount = cumsum(ucountin)
         map!((x -> convert(S, x)), cumcount, cumcount)
         tpr = (cumlabel ./ sumlabel)
-        fpr = ((cumcount .- cumlabel) ./ (lentrue .- sumlabel))
+        fpr = ((cumcount .- cumlabel) ./ (trainlentrue .- sumlabel))
         len = length(tpr)
         fpr1 = view(fpr, 1:(len-1))
         fpr2 = view(fpr, 2:len)
@@ -287,7 +300,7 @@ function getauc(pred::Vector{T}, label::AbstractCovariate{S}, selector::Abstract
         cumcount = cumsum(ucountout)
         map!((x -> convert(S, x)), cumcount, cumcount)
         tpr = (cumlabel ./ sumlabel)
-        fpr = ((cumcount .- cumlabel) ./ (lenfalse .- sumlabel))
+        fpr = ((cumcount .- cumlabel) ./ (validlentrue .- sumlabel))
         len = length(tpr)
         fpr1 = view(fpr, 1:(len-1))
         fpr2 = view(fpr, 2:len)

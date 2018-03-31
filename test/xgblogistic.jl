@@ -13,9 +13,10 @@ distance = factor(traintest_df["Distance"], 11:4962)
 factors = [traintest_df.factors; [deptime, distance]]
 
 trainsel = BoolVariate("trainsel", (1:1100000) .<= 1000000)
+validsel = BoolVariate("validsel", (1:1100000) .> 1000000)
 
-model1 = xgblogit(label, factors; selector = trainsel,  η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 6, ordstumps = false, pruning = false, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);
-_, testauc1 = getauc(model1.pred, label, trainsel)
+model1 = xgblogit(label, factors; trainselector = trainsel, validselector = validsel,  η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 6, ordstumps = false, pruning = false, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);
+_, testauc1 = getauc(model1.pred, label, trainsel, validsel)
 @test testauc1 ≈ 0.7004898 atol = 0.0000001
 
 model2 = xgblogit(label, factors; selector = trainsel, η = 1, λ = 10.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 6, ordstumps = false, pruning = true, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);

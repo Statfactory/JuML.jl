@@ -1,86 +1,83 @@
-struct GroupStats
-    factors::Vector{<:AbstractFactor}
-    covariate::AbstractCovariate
-    stats::Vector{Tuple{String, CovariateStats}}
-    linindexmap::Dict{Int64, Int64}
-    subindexmap::Vector{Vector{Int64}}
-    dims::Vector{Int64}
+struct GroupStats{N} 
+    keyvars::NTuple{N, StatVariate}
+    covariate::Nullable{AbstractCovariate}
+    stats::Dict
 end
 
-function Base.getindex(gstats::GroupStats, index::Integer)
-    gstats.stats[index]
+function getgroupstats(statvars::NTuple{N, StatVariate}; slicelength::Integer = SLICELENGTH) where {N}
+    eltypes = map((s -> eltype(s)), statvars)
+    dict = Dict{Tuple{eltypes...}, Int64}()
+    fromobs = 1
+    toobs = length(statvars[1])
+    slicelength = verifyslicelength(fromobs, toobs, slicelength)  
+    slices = zip(map((s -> slice(s, fromobs, toobs, slicelength)), statvars))
+    fold(dict, slices) do d, slice
+        for i in 1:length(slice[1])
+            v = map((x -> x[i]), slice)
+            d[v] = get(d, v, 0) + 1
+        end
+        d
+    end
+    GroupStats{N}(statvars, Nullable(), dict)
 end
 
-function getstats(factors::Vector{<:AbstractFactor}, covariate::AbstractCovariate; slicelength::Integer = SLICELENGTH)
-    levels = [getlevels(factor) for factor in factors]
-    factors = widenfactors(factors)
-    dims = Tuple([length(getlevels(factor)) + 1 for factor in factors])
-    k = length(factors)
-    obscount = length(covariate)
-    factorslices = zipn([slice(factor, 1, obscount, slicelength) for factor in factors])
-    covslices = slice(covariate,  1, obscount, slicelength)
-    subindexmap = [collect(1:length(getlevels(f))) for f in factors]
-    initstats = Vector{Tuple{String, CovariateStats}}()
-    initlinindexmap = Dict{Int64, Int64}()
-    subind = Vector{Int64}(k)
-    resstats, reslinindexmap = fold((initstats, initlinindexmap), zip2(factorslices, covslices)) do acc, slices
-        stats, linindexmap = acc
-        factorslicevector, covslice = slices
-        len = length(factorslicevector[1])
-        for i in 1:len
-            for j in 1:k
-                subind[j] = factorslicevector[j][i] + 1
-            end
-            ind = sub2ind(dims, subind...)
-            mappedind = get(linindexmap, ind, 0)
-            if mappedind == 0 
-                level = join(map((x -> x[2] == 1 ? MISSINGLEVEL : levels[x[1]][x[2] - 1]), enumerate(subind)), "*")
-                push!(stats, (level, CovariateStats(0, 0, NaN64, NaN64, NaN64, NaN64, NaN64, NaN64, NaN64)))
-                mappedind = length(stats)
-                linindexmap[ind] = mappedind
-            end
+function getgroupstats(statvar::StatVariate; slicelength::Integer = SLICELENGTH)
+    statvars = (statvar, )
+    getgroupstats(statvars; slicelength = slicelength) 
+end
+
+function getgroupstats(statvars::NTuple{N, StatVariate}, cov::AbstractCovariate{S}; slicelength::Integer = SLICELENGTH) where {N} where {S<:AbstractFloat}
+    eltypes = map((s -> eltype(s)), statvars)
+    dict = Dict{Tuple{eltypes...}, CovariateStats}()
+    fromobs = 1
+    toobs = length(statvars[1])
+    slicelength = verifyslicelength(fromobs, toobs, slicelength)  
+    slices = zip(map((s -> slice(s, fromobs, toobs, slicelength)), statvars))
+    covslices = slice(cov, fromobs, toobs, slicelength)
+    zipslices = zip2(slices, covslices)
+    fold(dict, zipslices) do d, zipslice
+        slice, covslice = zipslice
+        for i in 1:length(slice[1])
+            x = map((x -> x[i]), slice)
             v = covslice[i]
-            _, s = stats[mappedind]
-            s.obscount += 1
-            if isnan(v)
-                s.nancount += 1
+            if !(x in keys(d))
+                covstats = CovariateStats(0, 0, NaN64, NaN64, NaN64, NaN64, NaN64, NaN64, NaN64)
+                d[x] = covstats
             else
-                if isnan(s.sum)
-                    s.sum = v
-                    s.sum2 = v * v
-                    s.min = v
-                    s.max = v
+                covstats = d[x]
+            end
+            covstats.obscount += 1
+            if isnan(v)
+                covstats.nancount += 1
+            else
+                if isnan(covstats.sum)
+                    covstats.sum = v
+                    covstats.sum2 = v * v
+                    covstats.min = v
+                    covstats.max = v
                 else
-                    s.sum += v
-                    s.sum2 += v * v
-                    if v < s.min
-                        s.min = v
+                    covstats.sum += v
+                    covstats.sum2 += v * v
+                    if v < covstats.min
+                        covstats.min = v
                     end
-                    if v > s.max
-                        s.max = v
+                    if v > covstats.max
+                        covstats.max = v
                     end
                 end
             end
         end
-        stats, linindexmap
+        d
     end
-    for (_, stats) in resstats
+    for (_, stats) in dict
         stats.nanpcnt = 100.0 * stats.nancount / stats.obscount
         stats.mean = stats.sum / (stats.obscount - stats.nancount)
         stats.std = sqrt(((stats.sum2 - stats.sum * stats.sum / (stats.obscount - stats.nancount)) / (stats.obscount - stats.nancount - 1)))
     end
-    GroupStats(factors, covariate, resstats, reslinindexmap, subindexmap, [dims...])
+    GroupStats{N}(statvars, Nullable(cov), dict)
 end
 
-function Base.map(groupstats::GroupStats, dataframe::AbstractDataFrame)
-    factors = groupstats.factors
-    mappedfactors = map(factors) do f
-        map(f, dataframe)
-    end
-    maplevels = (levels, basefactor) -> begin
-        baselevels = getlevels(basefactor)
-        [findfirst(baselevels, level) for level in levels]
-    end
-    subindexmap = [maplevels(getlevels(f), factors[i]) for (i, f) in enumerate(mappedfactors)]
-    GroupStats(mappedfactors, groupstats.covariate, groupstats.stats, groupstats.linindexmap, subindexmap, groupstats.dims)
+function getgroupstats(statvar::StatVariate, cov::AbstractCovariate{S}; slicelength::Integer = SLICELENGTH) where {S<:AbstractFloat}
+    statvars = (statvar, )
+    getgroupstats(statvars, cov; slicelength = slicelength) 
 end

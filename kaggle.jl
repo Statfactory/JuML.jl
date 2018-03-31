@@ -14,19 +14,23 @@ using JuML
                  isnumeric = (colname, levelfreq) -> false,
                  isdatetime = (colname, levelfreq) -> colname in ["click_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
-train_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\train", preload = false)
-test_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test", preload = false)
+@time importcsv("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\train.csv"; path2 = "C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\test.csv",
+                 isnumeric = (colname, levelfreq) -> colname in ["is_attributed"],
+                 isdatetime = (colname, levelfreq) -> colname in ["click_time", "attributed_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
-factors = train_df.factors
-label = train_df["is_attributed"]
-click_time = train_df["click_time"]
+#train_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\train_sample", preload = false)
+#test_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test", preload = false)
+traintest_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\traintest", preload = false)
+
+factors = traintest_df.factors
+label = traintest_df["is_attributed"]
+click_time = traintest_df["click_time"]
 summary(click_time)
 
 clickday = factor(JuML.TransDateTimeCovariate("ClickDay", click_time, Dates.dayofweek), 1:5)
 clickhour = factor(JuML.TransDateTimeCovariate("ClickDay", click_time, dt -> 24 * Dates.dayofweek(dt) + Dates.hour(dt)), 38:113)
 clickminute = factor(JuML.TransDateTimeCovariate("ClickDay", click_time, dt -> 24 * 60 * Dates.dayofweek(dt) + 60 * Dates.hour(dt) + Dates.minute(dt)), 2312:6721)
 summary(clickhour)
-
 
 # function prepfactor(factorname::String, train::DataFrame, test::DataFrame)
 #     train_f = train[factorname]
@@ -91,11 +95,11 @@ summary(trainset)
 # channel = maplevels(train_df["channel"], testchannel)
 # device = maplevels(train_df["device"], testdevice)
 
-trainip = train_df["ip"]
-trainos = train_df["os"]
-trainapp = train_df["app"]
-trainchannel = train_df["channel"]
-traindevice = train_df["device"]
+trainip = traintest_df["ip"]
+trainos = traintest_df["os"]
+trainapp = traintest_df["app"]
+trainchannel = traintest_df["channel"]
+traindevice = traintest_df["device"]
 
 ipcount = JuML.GroupStatsCovariate("ipcount", JuML.getstats([trainip], label), s -> s.obscount)
 oscount = JuML.GroupStatsCovariate("oscount", JuML.getstats([trainos], label), s -> s.obscount)

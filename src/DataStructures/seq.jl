@@ -257,6 +257,28 @@ end
      )
  end
 
+function Base.zip(xs::Tuple{Seq{T}}) where {T}
+    map(xs[1], Tuple{T}) do x
+        (x, )
+    end  
+end
+
+function Base.zip(xs::Tuple{Seq{T}, Seq{S}}) where {T} where {S}
+    zip2(xs[1], xs[2])   
+end
+
+function Base.zip(xs::Tuple{Seq{T}, Seq{S}, Seq{U}}) where {T} where {S} where {U}
+    zip3(xs[1], xs[2], xs[3])   
+end
+
+function Base.zip(xs::Tuple{Seq{T1}, Seq{T2}, Seq{T3}, Seq{T4}}) where {T1} where {T2} where {T3} where {T4}
+    zip4(xs[1], xs[2], xs[3], xs[4])   
+end
+
+function Base.zip(xs::Tuple{Seq{T1}, Seq{T2}, Seq{T3}, Seq{T4}, Seq{T5}}) where {T1} where {T2} where {T3} where {T4} where {T5}
+    zip5(xs[1], xs[2], xs[3], xs[4], xs[5])   
+end
+
 function Base.foreach(f::Function, xs::Seq{T}) where {T}
     eof = false
     tail = xs
