@@ -14,13 +14,13 @@ using JuML
                  isnumeric = (colname, levelfreq) -> false,
                  isdatetime = (colname, levelfreq) -> colname in ["click_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
-@time importcsv("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\train.csv"; path2 = "C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\test.csv",
+@time importcsv("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\train.csv"; path2 = "C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test.csv",
                  isnumeric = (colname, levelfreq) -> colname in ["is_attributed"],
                  isdatetime = (colname, levelfreq) -> colname in ["click_time", "attributed_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
 #train_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\train_sample", preload = false)
-#test_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test", preload = false)
-traintest_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\traintest", preload = false)
+test_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test", preload = false)
+traintest_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\traintest", preload = false)
 
 factors = traintest_df.factors
 label = traintest_df["is_attributed"]
@@ -72,7 +72,8 @@ end
 
 
 r = rand(Float32, length(label))
-trainset = BoolVariate("", r .<= 0.9)
+trainset = BoolVariate("", r .<= 0.9) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x))
+validset = BoolVariate("", r .> 0.9) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x))
 # testset = r .> 0.9
 
 #trainset = (day .< 4) |> JuML.cache
@@ -95,22 +96,33 @@ summary(trainset)
 # channel = maplevels(train_df["channel"], testchannel)
 # device = maplevels(train_df["device"], testdevice)
 
-trainip = traintest_df["ip"]
-trainos = traintest_df["os"]
-trainapp = traintest_df["app"]
-trainchannel = traintest_df["channel"]
-traindevice = traintest_df["device"]
+ip = traintest_df["ip"]
+os = traintest_df["os"]
+app = traintest_df["app"]
+channel = traintest_df["channel"]
+device = traintest_df["device"]
 
-ipcount = JuML.GroupStatsCovariate("ipcount", JuML.getstats([trainip], label), s -> s.obscount)
-oscount = JuML.GroupStatsCovariate("oscount", JuML.getstats([trainos], label), s -> s.obscount)
-appcount = JuML.GroupStatsCovariate("appcount", JuML.getstats([trainapp], label), s -> s.obscount)
-channelcount = JuML.GroupStatsCovariate("channelcount", JuML.getstats([trainchannel], label), s -> s.obscount)
-devicecount = JuML.GroupStatsCovariate("devicecount", JuML.getstats([traindevice], label), s -> s.obscount)
-hourcount = JuML.GroupStatsCovariate("hourcount", JuML.getstats([clickhour], label), s -> s.obscount)
-iphourcount = JuML.GroupStatsCovariate("iphourcount", JuML.getstats([trainip, clickhour], label), s -> s.obscount)
-ipappcount = JuML.GroupStatsCovariate("ipappcount", JuML.getstats([trainip, trainapp], label), s -> s.obscount)
-ipdevicecount = JuML.GroupStatsCovariate("ipdevicecount", JuML.getstats([trainip, traindevice], label), s -> s.obscount)
+ipcount = JuML.GroupStatsCovariate("ipcount", getgroupstats(ip))
+oscount = JuML.GroupStatsCovariate("oscount", getgroupstats(os))
+appcount = JuML.GroupStatsCovariate("appcount", getgroupstats(app))
+channelcount = JuML.GroupStatsCovariate("channelcount", getgroupstats(channel))
+devicecount = JuML.GroupStatsCovariate("devicecount", getgroupstats(device))
+hourcount = JuML.GroupStatsCovariate("hourcount", getgroupstats(clickhour))
+iphourcount = JuML.GroupStatsCovariate("iphourcount", getgroupstats((ip, clickhour)))
+ipappcount = JuML.GroupStatsCovariate("ipappcount", getgroupstats((ip, app)))
+ipdevicecount = JuML.GroupStatsCovariate("ipdevicecount", getgroupstats((ip, device)))
 
+labelstats = getstats(label)
+
+ipmean = JuML.GroupStatsCovariate("ipcount", getgroupstats(ip, label), s -> isnan(s.mean) ? labelstats.mean : s.mean)
+osmean = JuML.GroupStatsCovariate("oscount", getgroupstats(os, label), s -> isnan(s.mean) ? labelstats.mean : s.mean)
+appmean = JuML.GroupStatsCovariate("appcount", getgroupstats(app, label), s -> isnan(s.mean) ? labelstats.mean : s.mean)
+channelmean = JuML.GroupStatsCovariate("channelcount", getgroupstats(channel, label), s -> isnan(s.mean) ? labelstats.mean : s.mean)
+devicemean = JuML.GroupStatsCovariate("devicecount", getgroupstats(device, label), s -> isnan(s.mean) ? labelstats.mean : s.mean)
+hourmean = JuML.GroupStatsCovariate("hourcount", getgroupstats(clickhour, label), s -> isnan(s.mean) ? labelstats.mean : s.mean)
+#iphourcount = JuML.GroupStatsCovariate("iphourcount", getgroupstats((ip, clickhour)))
+#ipappcount = JuML.GroupStatsCovariate("ipappcount", getgroupstats((ip, app)))
+#ipdevicecount = JuML.GroupStatsCovariate("ipdevicecount", getgroupstats((ip, device)))
 
 # ipgstats = JuML.getstats([trainip], label)
 # osgstats = JuML.getstats([trainos], label)
@@ -121,7 +133,7 @@ ipdevicecount = JuML.GroupStatsCovariate("ipdevicecount", JuML.getstats([trainip
 
 # daygstats = JuML.getstats([clickday], label)
 
-# labelstats = getstats(label)
+
 
 
 
@@ -142,18 +154,21 @@ end
 
 #modelfactors = [clickday, clickhour, fmean(ip, label, labelstats, ipgstats), fcount(ip, label, ipgstats), fmean(os, label, labelstats, osgstats), fcount(os, label, osgstats), fmean(device, label, labelstats, devicegstats), fcount(device, label, devicegstats), fmean(channel, label, labelstats, channelgstats), fcount(channel, label, channelgstats), fmean(app, label, labelstats, appgstats), fcount(app, label, appgstats)]
 #modelfactors = [fcount("hourstats", hourgstats), fcount("ipstats", ipgstats), fcount("osstats", osgstats), fcount("devicestats", devicegstats), fcount("channelstats", channelgstats), fcount("appstats", appgstats)]
-modelfactors = map((cov -> quantilebin(cov, 250)), [iphourcount, ipappcount, ipdevicecount, ipcount, oscount, devicecount, appcount, channelcount, hourcount])
-@time model = xgblogit(label, modelfactors; selector = trainset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = 1.0, minchildweight = 0.0, nrounds = 10, maxdepth = 6, ordstumps = true, pruning = false, leafwise = false, maxleaves = 32, caching = true, usefloat64 = false, singlethread = false, slicelength = 1000000);
+#modelfactors = map((cov -> quantilebin(cov, 250)), [iphourcount, ipappcount, ipdevicecount, ipcount, oscount, devicecount, appcount, channelcount, hourcount])
+modelfactors = map((cov -> quantilebin(cov, 250)), [ipmean, osmean, devicemean, appmean, channelmean, hourmean])
 
-@time trainauc = getauc(model.pred, label; selector = trainset)
-@time testauc = getauc(model.pred, label; selector = testset)
+@time model = xgblogit(label, modelfactors; trainselector = trainset, validselector = validset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = 1.0, minchildweight = 0.0, nrounds = 10, maxdepth = 6, ordstumps = true, pruning = false, leafwise = false, maxleaves = 32, caching = true, usefloat64 = false, singlethread = false, slicelength = 1000000);
 
-mean(model.pred)
-@time pred = predict(model, test_df)
-mean(pred)
-is_attr = Covariate("is_attributed", pred)
+#@time trainauc = getauc(model.pred, label; selector = trainset)
+#@time testauc = getauc(model.pred, label; selector = testset)
+
+#mean(model.pred)
+#@time pred = predict(model, test_df)
+#mean(pred)
+testlen = length(test_df["click_id"])
+is_attr = Covariate("is_attributed", model.pred[(length(model.pred) - testlen + 1):length(model.pred)])
 click_id = test_df["click_id"]
-sub_df = DataFrame(length(pred), [click_id], [is_attr], JuML.AbstractBoolVariate[], JuML.AbstractDateTimeVariate[])
+sub_df = DataFrame(testlen, [click_id], [is_attr], JuML.AbstractBoolVariate[], JuML.AbstractDateTimeVariate[])
 JuML.tocsv("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\submission.csv", sub_df)
 
 
