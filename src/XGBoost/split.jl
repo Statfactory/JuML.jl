@@ -18,6 +18,14 @@ function getloss(node::SplitNode{T}, λ::T) where {T<:AbstractFloat}
     node.loss
 end
 
+function getgain(node::LeafNode{T}) where {T<:AbstractFloat}
+    zero(T)
+end
+
+function getgain(node::SplitNode{T}) where {T<:AbstractFloat}
+    node.gain
+end
+
 function sumgradientslice!(∂𝑙sum0, ∂²𝑙sum0, nodeids::Vector{<:Integer}, nodecansplit::Vector{Bool}, factor::AbstractFactor,
                            ∂𝑙covariate::AbstractCovariate{T}, ∂²𝑙covariate::AbstractCovariate{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:AbstractFloat}
 
@@ -97,7 +105,7 @@ function splitnodeids!(nodeids::Vector{<:Integer}, layer::TreeLayer{T}, slicelen
     len = length(nodeids)
     fromobs = 1
     toobs = len
-    issplitnode = [isa(n, SplitNode) for n in nodes]
+    issplitnode = [isa(n, SplitNode) && n.isactive for n in nodes]
     nodemap = Vector{Int64}()
     splitnodecount = 0
     for (i, x) in enumerate(issplitnode)
@@ -119,7 +127,7 @@ function splitnodeids!(nodeids::Vector{<:Integer}, layer::TreeLayer{T}, slicelen
          end
     end
     factors = widenfactors(factors)
-    leftpartitions = [isa(n, SplitNode) ? [n.leftpartition.inclmissing; n.leftpartition.mask] : Vector{Bool}() for n in nodes]
+    leftpartitions = [isa(n, SplitNode) && n.isactive ? [n.leftnode.partitions[n.factor].inclmissing; n.leftnode.partitions[n.factor].mask] : Vector{Bool}() for n in nodes]
 
     nthreads = singlethread ? 1 : Threads.nthreads()
     if nthreads > 1
@@ -136,20 +144,24 @@ function splitnodeids!(nodeids::Vector{<:Integer}, layer::TreeLayer{T}, slicelen
     nodeids
 end
 
-function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradient::Vector{LossGradient{T}},
+function getsplitnode(factor::AbstractFactor, leafnode::LeafNode{T}, gradient::Vector{LossGradient{T}},
                       λ::T, min∂²𝑙::T, ordstumps::Bool) where {T<:AbstractFloat}
 
+    partition = leafnode.partitions[factor]
     isord = isordinal(factor)
     gradstart = findfirst(partition.mask, true) + 1
     ∂𝑙sum0 = sum((grad -> grad.∂𝑙), gradient[gradstart:end])
     ∂²𝑙sum0 = sum((grad -> grad.∂²𝑙), gradient[gradstart:end]) 
     miss∂𝑙 = gradient[1].∂𝑙 
     miss∂²𝑙 = gradient[1].∂²𝑙
+    currloss = getloss(∂𝑙sum0 + miss∂𝑙, ∂²𝑙sum0 + miss∂²𝑙, λ)
     bestloss = typemax(T) 
     levelcount = length(partition.mask)
-    split = SplitNode{T}(factor, LevelPartition(copy(partition.mask), partition.inclmissing), LevelPartition(zeros(Bool, levelcount), !partition.inclmissing),
-                         LossGradient{T}(∂𝑙sum0 + miss∂𝑙, ∂²𝑙sum0 + miss∂²𝑙), LossGradient{T}(zero(T), zero(T)),
-                         bestloss)
+    leftnode = LeafNode{T}(LossGradient{T}(∂𝑙sum0 + miss∂𝑙, ∂²𝑙sum0 + miss∂²𝑙), true, copy(leafnode.partitions))
+    rightnode = LeafNode{T}(LossGradient{T}(zero(T), zero(T)), true, copy(leafnode.partitions))
+    split = SplitNode{T}(factor, leftnode, rightnode, bestloss, false, zero(T))
+    leftpartition = deepcopy(leftnode.partitions[factor])
+    rightpartition = deepcopy(rightnode.partitions[factor])
     
     left∂𝑙sum = gradient[gradstart].∂𝑙
     left∂²𝑙sum = gradient[gradstart].∂²𝑙
@@ -159,28 +171,28 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
 
     if firstlevelwithmiss < bestloss && (left∂²𝑙sum + miss∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - left∂²𝑙sum >= min∂²𝑙)
         if firstlevelwitouthmiss < firstlevelwithmiss && (left∂²𝑙sum >= min∂²𝑙) && (∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙 >= min∂²𝑙)
-            split.leftgradient.∂𝑙 = left∂𝑙sum
-            split.leftgradient.∂²𝑙 = left∂²𝑙sum
-            split.rightgradient.∂𝑙 = ∂𝑙sum0 - left∂𝑙sum + miss∂𝑙
-            split.rightgradient.∂²𝑙 = ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙
+            split.leftnode.gradient.∂𝑙 = left∂𝑙sum
+            split.leftnode.gradient.∂²𝑙 = left∂²𝑙sum
+            split.rightnode.gradient.∂𝑙 = ∂𝑙sum0 - left∂𝑙sum + miss∂𝑙
+            split.rightnode.gradient.∂²𝑙 = ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙
             for j in 1:levelcount
-                split.leftpartition.mask[j] = j == (gradstart - 1)
-                split.rightpartition.mask[j] = j == (gradstart - 1) ? false : partition.mask[j]
+                leftpartition.mask[j] = j == (gradstart - 1)
+                rightpartition.mask[j] = j == (gradstart - 1) ? false : partition.mask[j]
             end
-            split.leftpartition.inclmissing = false
-            split.rightpartition.inclmissing = partition.inclmissing
+            leftpartition.inclmissing = false
+            rightpartition.inclmissing = partition.inclmissing
             split.loss = firstlevelwitouthmiss
         else
-            split.leftgradient.∂𝑙 = left∂𝑙sum + miss∂𝑙
-            split.leftgradient.∂²𝑙 = left∂²𝑙sum + miss∂²𝑙
-            split.rightgradient.∂𝑙 = ∂𝑙sum0 - left∂𝑙sum
-            split.rightgradient.∂²𝑙 = ∂²𝑙sum0 - left∂²𝑙sum
+            split.leftnode.gradient.∂𝑙 = left∂𝑙sum + miss∂𝑙
+            split.leftnode.gradient.∂²𝑙 = left∂²𝑙sum + miss∂²𝑙
+            split.rightnode.gradient.∂𝑙 = ∂𝑙sum0 - left∂𝑙sum
+            split.rightnode.gradient.∂²𝑙 = ∂²𝑙sum0 - left∂²𝑙sum
             for j in 1:levelcount
-                split.leftpartition.mask[j] = j == (gradstart - 1)
-                split.rightpartition.mask[j] = j == (gradstart - 1) ? false : partition.mask[j]
+                leftpartition.mask[j] = j == (gradstart - 1)
+                rightpartition.mask[j] = j == (gradstart - 1) ? false : partition.mask[j]
             end
-            split.leftpartition.inclmissing = partition.inclmissing
-            split.rightpartition.inclmissing = false
+            leftpartition.inclmissing = partition.inclmissing
+            rightpartition.inclmissing = false
             split.loss = firstlevelwithmiss
         end
     end
@@ -204,28 +216,28 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
         if isord
             if leftwithmisstotal < split.loss && (left∂²𝑙sum + miss∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - left∂²𝑙sum >= min∂²𝑙)
                 if leftwithoutmisstotal < leftwithmisstotal && (left∂²𝑙sum >= min∂²𝑙) && (∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙 >= min∂²𝑙)
-                    split.leftgradient.∂𝑙 = left∂𝑙sum
-                    split.leftgradient.∂²𝑙 = left∂²𝑙sum
-                    split.rightgradient.∂𝑙 = ∂𝑙sum0 - left∂𝑙sum + miss∂𝑙
-                    split.rightgradient.∂²𝑙 = ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙
+                    split.leftnode.gradient.∂𝑙 = left∂𝑙sum
+                    split.leftnode.gradient.∂²𝑙 = left∂²𝑙sum
+                    split.rightnode.gradient.∂𝑙 = ∂𝑙sum0 - left∂𝑙sum + miss∂𝑙
+                    split.rightnode.gradient.∂²𝑙 = ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙
                     for j in 1:levelcount
-                        split.leftpartition.mask[j] = j < i ? partition.mask[j] : false
-                        split.rightpartition.mask[j] = j < i ? false : partition.mask[j]
+                        leftpartition.mask[j] = j < i ? partition.mask[j] : false
+                        rightpartition.mask[j] = j < i ? false : partition.mask[j]
                     end
-                    split.leftpartition.inclmissing = false
-                    split.rightpartition.inclmissing = partition.inclmissing
+                    leftpartition.inclmissing = false
+                    rightpartition.inclmissing = partition.inclmissing
                     split.loss = leftwithoutmisstotal
                 else
-                    split.leftgradient.∂𝑙 = left∂𝑙sum + miss∂𝑙
-                    split.leftgradient.∂²𝑙 = left∂²𝑙sum + miss∂²𝑙
-                    split.rightgradient.∂𝑙 = ∂𝑙sum0 - left∂𝑙sum
-                    split.rightgradient.∂²𝑙 = ∂²𝑙sum0 - left∂²𝑙sum
+                    split.leftnode.gradient.∂𝑙 = left∂𝑙sum + miss∂𝑙
+                    split.leftnode.gradient.∂²𝑙 = left∂²𝑙sum + miss∂²𝑙
+                    split.rightnode.gradient.∂𝑙 = ∂𝑙sum0 - left∂𝑙sum
+                    split.rightnode.gradient.∂²𝑙 = ∂²𝑙sum0 - left∂²𝑙sum
                     for j in 1:levelcount
-                        split.leftpartition.mask[j] = j < i ? partition.mask[j] : false
-                        split.rightpartition.mask[j] = j < i ? false : partition.mask[j]
+                        leftpartition.mask[j] = j < i ? partition.mask[j] : false
+                        rightpartition.mask[j] = j < i ? false : partition.mask[j]
                     end
-                    split.leftpartition.inclmissing = partition.inclmissing
-                    split.rightpartition.inclmissing = false
+                    leftpartition.inclmissing = partition.inclmissing
+                    rightpartition.inclmissing = false
                     split.loss = leftwithmisstotal
                 end
             end
@@ -233,34 +245,39 @@ function getsplitnode(factor::AbstractFactor, partition::LevelPartition, gradien
         if ordstumps || !isord
             if singlelevelwithmisstotal < split.loss && (∂²𝑙 + miss∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - ∂²𝑙 >= min∂²𝑙)
                 if singlelevelwitouthmisstotal < singlelevelwithmisstotal && (∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - ∂²𝑙 + miss∂²𝑙 >= min∂²𝑙)
-                    split.leftgradient.∂𝑙 = ∂𝑙
-                    split.leftgradient.∂²𝑙 =  ∂²𝑙
-                    split.rightgradient.∂𝑙 = ∂𝑙sum0 - ∂𝑙 + miss∂𝑙
-                    split.rightgradient.∂²𝑙 = ∂²𝑙sum0 - ∂²𝑙 + miss∂²𝑙
+                    split.leftnode.gradient.∂𝑙 = ∂𝑙
+                    split.leftnode.gradient.∂²𝑙 =  ∂²𝑙
+                    split.rightnode.gradient.∂𝑙 = ∂𝑙sum0 - ∂𝑙 + miss∂𝑙
+                    split.rightnode.gradient.∂²𝑙 = ∂²𝑙sum0 - ∂²𝑙 + miss∂²𝑙
                     for j in 1:levelcount
-                        split.leftpartition.mask[j] = j == (i - 1)
-                        split.rightpartition.mask[j] = j == (i - 1) ? false : partition.mask[j]
+                        leftpartition.mask[j] = j == (i - 1)
+                        rightpartition.mask[j] = j == (i - 1) ? false : partition.mask[j]
                     end
-                    split.leftpartition.inclmissing = false
-                    split.rightpartition.inclmissing = partition.inclmissing
+                    leftpartition.inclmissing = false
+                    rightpartition.inclmissing = partition.inclmissing
                     split.loss = singlelevelwitouthmisstotal
                 else
-                    split.leftgradient.∂𝑙 = ∂𝑙 + miss∂𝑙
-                    split.leftgradient.∂²𝑙 =  ∂²𝑙 + miss∂²𝑙
-                    split.rightgradient.∂𝑙 = ∂𝑙sum0 - ∂𝑙
-                    split.rightgradient.∂²𝑙 = ∂²𝑙sum0 - ∂²𝑙
+                    split.leftnode.gradient.∂𝑙 = ∂𝑙 + miss∂𝑙
+                    split.leftnode.gradient.∂²𝑙 =  ∂²𝑙 + miss∂²𝑙
+                    split.rightnode.gradient.∂𝑙 = ∂𝑙sum0 - ∂𝑙
+                    split.rightnode.gradient.∂²𝑙 = ∂²𝑙sum0 - ∂²𝑙
                     for j in 1:levelcount
-                        split.leftpartition.mask[j] = j == (i - 1)
-                        split.rightpartition.mask[j] = j == (i - 1) ? false : partition.mask[j]
+                        leftpartition.mask[j] = j == (i - 1)
+                        rightpartition.mask[j] = j == (i - 1) ? false : partition.mask[j]
                     end
-                    split.leftpartition.inclmissing = partition.inclmissing
-                    split.rightpartition.inclmissing = false
+                    leftpartition.inclmissing = partition.inclmissing
+                    rightpartition.inclmissing = false
                     split.loss = singlelevelwithmisstotal
                 end
             end
         end
     end
-    if count(split.rightpartition.mask) > 0 && split.loss < typemax(T)
+    if count(rightpartition.mask) > 0 && split.loss < typemax(T)
+        split.gain = currloss - split.loss
+        leftnode.partitions[factor] = leftpartition
+        leftnode.cansplit = leftnode.gradient.∂²𝑙 >= min∂²𝑙
+        rightnode.partitions[factor] = rightpartition
+        rightnode.cansplit = rightnode.gradient.∂²𝑙 >= min∂²𝑙
         Nullable{SplitNode{T}}(split)
     else
         Nullable{SplitNode{T}}()
@@ -273,10 +290,10 @@ function getnewsplit(gradient::Vector{Vector{LossGradient{T}}}, nodes::Vector{Tr
     if !singlethread && length(gradient) > 2 * Threads.nthreads()
         Threads.@threads for i in 1:length(gradient)
             grad = gradient[i]
-            if nodes[i].cansplit
+            if isa(nodes[i], LeafNode) && nodes[i].cansplit
                 partition = nodes[i].partitions[factor]
                 if count(partition.mask) > 1
-                    newsplit[i] = getsplitnode(factor, nodes[i].partitions[factor],  grad, λ, min∂²𝑙, ordstumps)
+                    newsplit[i] = getsplitnode(factor, nodes[i],  grad, λ, min∂²𝑙, ordstumps)
                 else
                     newsplit[i] = Nullable{SplitNode{T}}()
                 end
@@ -287,10 +304,10 @@ function getnewsplit(gradient::Vector{Vector{LossGradient{T}}}, nodes::Vector{Tr
     else
         for i in 1:length(gradient)
             grad = gradient[i]
-            if nodes[i].cansplit
+            if isa(nodes[i], LeafNode) && nodes[i].cansplit
                 partition = nodes[i].partitions[factor]
                 if count(partition.mask) > 1
-                    newsplit[i] = getsplitnode(factor, nodes[i].partitions[factor],  grad, λ, min∂²𝑙, ordstumps)
+                    newsplit[i] = getsplitnode(factor, nodes[i],  grad, λ, min∂²𝑙, ordstumps)
                 else
                     newsplit[i] = Nullable{SplitNode{T}}()
                 end
@@ -304,95 +321,138 @@ end
 
 function findbestsplit(state::TreeGrowState{T}) where {T<:AbstractFloat}
 
-    nodecansplit = [n.cansplit for n in state.nodes]
-    bestgain = T(0.5) * state.γ
+    nodecansplit = [isa(n, LeafNode) && n.cansplit for n in state.nodes]
+    mingain = T(0.5) * state.γ
     currloss = [getloss(n, state.λ) for n in state.nodes]
-    foldl(state.nodes, enumerate(state.factors)) do currsplit, nfactor
+    res = foldl(state.nodes, enumerate(state.factors)) do currsplit, nfactor
         n, factor = nfactor
-        partitions = [node.partitions[factor] for node in state.nodes]
+        partitions = [isa(node, LeafNode) && node.cansplit ? node.partitions[factor] : LevelPartition(Vector{Bool}(), false) for node in state.nodes]
 
         gradient = sumgradient(state.nodeids, nodecansplit, factor, partitions, state.∂𝑙covariate, state.∂²𝑙covariate, state.slicelength, state.singlethread)
         
         newsplit = getnewsplit(gradient, state.nodes, factor, state.λ, state.γ, state.min∂²𝑙, state.ordstumps, state.singlethread)
 
         res = Vector{TreeNode{T}}(length(newsplit))
-        if state.leafwise
-            gain = [isnull(newsplit[i]) ? T(NaN32) : currloss[i] - get(newsplit[i]).loss for i in 1:length(newsplit)]
-            (maxgain, imax) = findmax(gain)
-            if maxgain > bestgain
-                bestgain = maxgain
-                @inbounds for i in 1:length(newsplit)
-                    if i == imax
-                        res[i] = get(newsplit[i])
-                    else
-                        res[i] = state.nodes[i] 
-                    end
-                end
-            else
-                @inbounds for i in 1:length(newsplit)
-                        res[i] = currsplit[i] 
-                end
-            end
-        else
-            mingain = T(0.5) * state.γ
-            @inbounds for i in 1:length(newsplit)
-                if !isnull(newsplit[i])
-                   newloss = get(newsplit[i]).loss
-                   if currloss[i] - newloss > mingain && newloss < getloss(currsplit[i], state.λ)
-                       res[i] = get(newsplit[i])
-                   else
-                       res[i] = currsplit[i] 
-                   end
-                else
+        @inbounds for i in 1:length(newsplit)
+            if !isnull(newsplit[i])
+               newloss = get(newsplit[i]).loss
+               newgain = get(newsplit[i]).gain
+               if newgain > mingain && newloss < getloss(currsplit[i], state.λ)
+                   res[i] = get(newsplit[i])
+               else
                    res[i] = currsplit[i] 
-                end
-           end
+               end
+            else
+               res[i] = currsplit[i] 
+            end
         end
         res
+
+        # if state.leafwise
+        #     gain = map(getgain, res)
+        #     (maxgain, imax) = findmax(gain)
+        #     if maxgain > mingain
+
+        #     end
+
+        #     gain = [isnull(newsplit[i]) ? T(NaN32) : currloss[i] - get(newsplit[i]).loss for i in 1:length(newsplit)]
+        #     (maxgain, imax) = findmax(gain)
+        #     if maxgain > bestgain
+        #         bestgain = maxgain
+        #         @inbounds for i in 1:length(newsplit)
+        #             if i == imax
+        #                 res[i] = get(newsplit[i])
+        #             else
+        #                 res[i] = state.nodes[i] 
+        #             end
+        #         end
+        #     else
+        #         @inbounds for i in 1:length(newsplit)
+        #                 res[i] = currsplit[i] 
+        #         end
+        #     end
+        # else
+        #     mingain = T(0.5) * state.γ
+        #     @inbounds for i in 1:length(newsplit)
+        #         if !isnull(newsplit[i])
+        #            newloss = get(newsplit[i]).loss
+        #            if currloss[i] - newloss > mingain && newloss < getloss(currsplit[i], state.λ)
+        #                res[i] = get(newsplit[i])
+        #            else
+        #                res[i] = currsplit[i] 
+        #            end
+        #         else
+        #            res[i] = currsplit[i] 
+        #         end
+        #    end
+        #end
     end
+    if state.leafwise
+        gain = map(getgain, res)
+        (maxgain, imax) = findmax(gain)
+        if maxgain > mingain
+            @inbounds for i in 1:length(res)
+                if i == imax && isa(res[i], SplitNode)
+                    res[i].isactive = true
+                elseif isa(res[i], SplitNode)
+                    res[i].isactive = false
+                end
+            end
+        end
+    else
+        @inbounds for i in 1:length(res)
+            if isa(res[i], SplitNode)
+                res[i].isactive = true
+            end
+        end
+    end
+    res
 end
 
 function updatestate(state::TreeGrowState{T}, layer::TreeLayer{T}) where {T<:AbstractFloat}
     splitnodeids!(state.nodeids, layer, state.slicelength, state.singlethread)  
     factors = state.factors
-    newnodes = Vector{LeafNode{T}}()
+    newnodes = Vector{TreeNode{T}}()
     @inbounds for (i, n) in enumerate(layer.nodes)
-        if isa(n, SplitNode)
-            leftpartitions = map(state.nodes[i].partitions) do x
-                f, p = x
-                if f == n.factor
-                    f => n.leftpartition
-                else
-                    x
-                end
-            end
-            rightpartitions = map(state.nodes[i].partitions) do x
-                f, p = x
-                if f == n.factor
-                    f => n.rightpartition
-                else
-                    x
-                end
-            end
-            push!(newnodes, LeafNode{T}(n.leftgradient,
-                                        n.leftgradient.∂²𝑙 >= state.min∂²𝑙,
-                                        leftpartitions))
-            push!(newnodes, LeafNode{T}(n.rightgradient,
-                                        n.rightgradient.∂²𝑙 >= state.min∂²𝑙,
-                                        rightpartitions))
+        if isa(n, SplitNode) && n.isactive
+            push!(newnodes, n.leftnode)
+            push!(newnodes, n.rightnode)
+            # if isa(state.nodes[i], LeafNode)
+            #     leftpartitions = map(state.nodes[i].partitions) do x
+            #         f, p = x
+            #         if f == n.factor
+            #             f => n.leftpartition
+            #         else
+            #             x
+            #         end
+            #     end
+            #     rightpartitions = map(state.nodes[i].partitions) do x
+            #         f, p = x
+            #         if f == n.factor
+            #             f => n.rightpartition
+            #         else
+            #             x
+            #         end
+            #     end
+            #     push!(newnodes, LeafNode{T}(n.leftgradient,
+            #                                 n.leftgradient.∂²𝑙 >= state.min∂²𝑙,
+            #                                 leftpartitions))
+            #     push!(newnodes, LeafNode{T}(n.rightgradient,
+            #                                 n.rightgradient.∂²𝑙 >= state.min∂²𝑙,
+            #                                 rightpartitions))
         else
-            push!(newnodes, LeafNode{T}(n.gradient, n.cansplit, n.partitions))
+            push!(newnodes, n)
         end
     end
-    activefactors = filter(factors) do f
-        any(map((n -> count(n.partitions[f].mask) > 1), newnodes))
-    end 
-    state.factors = activefactors
-    for n in newnodes
-        n.partitions = filter(n.partitions) do f, p
-            f in activefactors
-        end
-    end
+    # activefactors = filter(factors) do f
+    #     any(map((n -> count(n.partitions[f].mask) > 1), newnodes))
+    # end 
+    # state.factors = activefactors
+    # for n in newnodes
+    #     n.partitions = filter(n.partitions) do f, p
+    #         f in activefactors
+    #     end
+    # end
     state.nodes = newnodes
     state
 end
@@ -407,9 +467,11 @@ end
 function predict(treelayer::TreeLayer{T}, nodeids::Vector{<:Integer}, λ::T) where {T<:AbstractFloat}
     weights = Vector{T}()
     @inbounds for (i, node) in enumerate(treelayer.nodes)
-        if isa(node, SplitNode)
-            push!(weights, getweight(node.leftgradient, λ))
-            push!(weights, getweight(node.rightgradient, λ))
+        if isa(node, SplitNode) && node.isactive
+            push!(weights, getweight(node.leftnode.gradient, λ))
+            push!(weights, getweight(node.rightnode.gradient, λ))
+        elseif isa(node, SplitNode) 
+            push!(weights, getweight(node.leftnode.gradient + node.rightnode.gradient, λ))
         else
             push!(weights, getweight(node.gradient, λ))
         end

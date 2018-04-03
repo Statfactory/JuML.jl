@@ -9,7 +9,7 @@ importcsv("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetrain.csv", path2 = "C
 
 train_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetrain") # note we are passing a path to a folder
 test_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetest") 
-traintest_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetrainairlinetest") 
+traintest_df = DataFrame("C:\\Users\\adamm\\Documents\\Julia\\airlinetrainairlinetest") 
 
 factors = traintest_df.factors
 covariates = traintest_df.covariates
@@ -24,30 +24,30 @@ summary(dep_delayed_15min)
 
 label = covariate(traintest_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)
 
-deptime = factor(traintest_df["DepTime"], 1:2930)
-distance = factor(traintest_df["Distance"], 11:4962)
+deptime = factor(traintest_df["DepTime"])
+distance = factor(traintest_df["Distance"])
 
-islessf = (x, y) -> parse(x[3:end]) < parse(y[3:end])
-month = JuML.OrdinalFactor("Month", traintest_df["Month"], islessf)
-dayofMonth = JuML.OrdinalFactor("DayofMonth", traintest_df["DayofMonth"], islessf)
-dayOfWeek = JuML.OrdinalFactor("DayOfWeek", traintest_df["DayOfWeek"], islessf)
-uniqueCarrier = JuML.OrdinalFactor(traintest_df["UniqueCarrier"])
-origin = JuML.OrdinalFactor(traintest_df["Origin"])
-dest = JuML.OrdinalFactor(traintest_df["Dest"])
+# islessf = (x, y) -> parse(x[3:end]) < parse(y[3:end])
+# month = JuML.OrdinalFactor("Month", traintest_df["Month"], islessf)
+# dayofMonth = JuML.OrdinalFactor("DayofMonth", traintest_df["DayofMonth"], islessf)
+# dayOfWeek = JuML.OrdinalFactor("DayOfWeek", traintest_df["DayOfWeek"], islessf)
+# uniqueCarrier = JuML.OrdinalFactor(traintest_df["UniqueCarrier"])
+# origin = JuML.OrdinalFactor(traintest_df["Origin"])
+# dest = JuML.OrdinalFactor(traintest_df["Dest"])
 
-factors = [[month, dayofMonth, dayOfWeek, uniqueCarrier, origin, dest]; [deptime, distance]]
+# factors = [[month, dayofMonth, dayOfWeek, uniqueCarrier, origin, dest]; [deptime, distance]]
 
 #factors = [traintest_df.factors; [deptime, distance]]
 
-trainsel = (1:10100000) .<= 10000000
-testsel = (1:10100000) .> 10000000
+trainsel = BoolVariate("", (1:10100000) .<= 10000000)
+testsel = BoolVariate("", (1:10100000) .> 10000000)
 
-@time model = xgblogit(label, factors; selector = BoolVariate("", trainsel), η = 0.1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 100, maxdepth = 10, ordstumps = true, pruning = true, caching = true, usefloat64 = true, singlethread = false, slicelength = 0);
+@time model = xgblogit(label, [factors; [deptime, distance]]; trainselector = trainsel, validselector = testsel, η = 0.1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 100, maxdepth = 10, leafwise = true, maxleaves = 256, ordstumps = true, pruning = false, caching = true, usefloat64 = true, singlethread = false, slicelength = 0);
 
 #@time pred = predict(model, test_df)
 #testlabel = covariate(test_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)
-trainauc = getauc(model.pred, label;selector = trainsel)
-testauc = getauc(model.pred, label; selector = testsel)
+
+ trainauc, testauc = getauc(model.pred, label, trainsel, testsel)
 
 trainlogloss = getlogloss(model.pred, label;selector = trainsel)
 testlogloss = getlogloss(model.pred, label; selector = testsel)

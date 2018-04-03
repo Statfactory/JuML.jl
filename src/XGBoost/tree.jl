@@ -3,6 +3,10 @@ mutable struct LossGradient{T<:AbstractFloat}
     ∂²𝑙::T
 end
 
+function Base.:+(x::LossGradient{T}, y::LossGradient{T}) where {T<:AbstractFloat}
+    LossGradient{T}(x.∂𝑙 + y.∂𝑙, x.∂²𝑙 + y.∂²𝑙)
+end
+
 mutable struct LevelPartition
     mask::Vector{Bool}
     inclmissing::Bool
@@ -18,11 +22,15 @@ end
 
 mutable struct SplitNode{T<:AbstractFloat} <: TreeNode{T}
     factor::AbstractFactor
-    leftpartition::LevelPartition
-    rightpartition::LevelPartition
-    leftgradient::LossGradient{T}
-    rightgradient::LossGradient{T}
+    #leftpartition::LevelPartition
+    #rightpartition::LevelPartition
+    leftnode::LeafNode{T}
+    rightnode::LeafNode{T}
+    #leftgradient::LossGradient{T}
+    #rightgradient::LossGradient{T}
     loss::T
+    isactive::Bool
+    gain::T
 end
 
 struct TreeLayer{T<:AbstractFloat}
