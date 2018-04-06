@@ -26,14 +26,22 @@ function slice(covariate::GroupStatsCovariate{N, T}, fromobs::Integer, toobs::In
     eltypes = map((x -> eltype(x)), keyvars)
     dict = covariate.groupstats.stats
     slicelength = verifyslicelength(fromobs, toobs, slicelength) 
-    zipslices = zip(map((v -> slice(v, fromobs, toobs, slicelength)), keyvars))
+    zipslices = zipn(map((v -> slice(v, fromobs, toobs, slicelength)), keyvars))
     f = covariate.transform
     buffer = Vector{T}(slicelength)
     map(zipslices, SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}) do zipslice
         n = length(zipslice[1])
-        for i in 1:n
-            buffer[i] = T(f(dict[map((x -> x[i]), zipslice)]))
+        if N == 2
+            slice1, slice2 = zipslice
+            for i in 1:n
+                buffer[i] = T(f(dict[(slice1[i], slice2[i])]))
+            end
+            view(buffer, 1:n)
+        else
+            for i in 1:n
+                buffer[i] = T(f(dict[map((x -> x[i]), zipslice)]))
+            end
+            view(buffer, 1:n)
         end
-        view(buffer, 1:n)
     end
 end

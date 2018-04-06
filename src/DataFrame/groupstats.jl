@@ -4,17 +4,47 @@ struct GroupStats{N}
     stats::Dict
 end
 
+function getgroupstats(factor1::AbstractFactor{S}, factor2::AbstractFactor{T}; slicelength::Integer = SLICELENGTH) where {S<:Unsigned} where {T<:Unsigned}
+    fromobs = 1
+    toobs = length(factor1)
+    slicelength = verifyslicelength(fromobs, toobs, slicelength) 
+    slices = zip2(slice(factor1, fromobs, toobs, slicelength), slice(factor2, fromobs, toobs, slicelength))
+    dict = fold(Dict{Tuple{S, T}, Int64}(), slices) do d, slice
+        slice1::SubArray{S,1,Array{S,1},Tuple{UnitRange{Int64}},true}, slice2::SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true} = slice
+        @inbounds for i in 1:length(slice1)
+            v = slice1[i], slice2[i]
+            d[v] = get(d, v, 0) + 1
+        end
+        d
+    end
+    GroupStats{2}((factor1, factor2), Nullable(), dict)
+end
+
 function getgroupstats(statvars::NTuple{N, StatVariate}; slicelength::Integer = SLICELENGTH) where {N}
     eltypes = map((s -> eltype(s)), statvars)
     dict = Dict{Tuple{eltypes...}, Int64}()
     fromobs = 1
     toobs = length(statvars[1])
     slicelength = verifyslicelength(fromobs, toobs, slicelength)  
-    slices = zip(map((s -> slice(s, fromobs, toobs, slicelength)), statvars))
-    fold(dict, slices) do d, slice
-        for i in 1:length(slice[1])
-            v = map((x -> x[i]), slice)
-            d[v] = get(d, v, 0) + 1
+    slices = zipn(map((s -> slice(s, fromobs, toobs, slicelength)), statvars))
+    dict = fold(Dict{Tuple{eltypes...}, Int64}(), slices) do d, slice
+        if N == 2
+            slice1, slice2 = slice
+            for i in 1:length(slice1)
+                v = slice1[i], slice2[i]
+                d[v] = get(d, v, 0) + 1
+            end
+        elseif N == 3
+            slice1, slice2, slice3 = slice
+            for i in 1:length(slice1)
+                v = slice1[i], slice2[i], slice3[i]
+                d[v] = get(d, v, 0) + 1
+            end
+        else
+            for i in 1:length(slice[1])
+                v = map((x -> x[i]), slice)
+                d[v] = get(d, v, 0) + 1
+            end
         end
         d
     end

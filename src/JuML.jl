@@ -33,6 +33,8 @@ include("DataImport/dataimport.jl")
 include("DataFrame/dataframe.jl")
 include("DataFrame/groupstats.jl")
 
+include("Covariates/groupstatscovariate.jl")
+
 include("Factors/factor.jl")
 include("Factors/constfactor.jl")
 include("Factors/filefactor.jl")
@@ -56,7 +58,7 @@ include("Covariates/ifelsecovariate.jl")
 include("Covariates/unixdatecovariate.jl")
 include("Covariates/transdatetimecovariate.jl")
 include("Covariates/randcovariate.jl")
-include("Covariates/groupstatscovariate.jl")
+
 
 include("BoolVariates/boolvariate.jl")
 include("BoolVariates/cachedboolvariate.jl")

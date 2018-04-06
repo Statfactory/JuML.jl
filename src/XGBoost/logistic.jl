@@ -40,10 +40,12 @@ function xgblogit(label::AbstractCovariate{S}, factors::Vector{<:AbstractFactor}
                   singlethread::Bool = false) where {S<:AbstractFloat}
 
     T = usefloat64 ? Float64 : Float32
-    factors = caching ? map(cache, widenfactors(filter((f -> getname(f) != getname(label)), factors))) : filter((f -> getname(f) != getname(label)), factors)
+    #factors = caching ? map(cache, widenfactors(filter((f -> getname(f) != getname(label)), factors))) : filter((f -> getname(f) != getname(label)), factors)
+    factors = caching ? map(cache, filter((f -> getname(f) != getname(label)), factors)) : filter((f -> getname(f) != getname(label)), factors)
     label = caching ? cache(label) : label
     slicelength = slicelength <= 0 ? length(label) : slicelength
     trainselector = caching ? (trainselector |> cache) : trainselector
+    validselector = caching ? (validselector |> cache) : validselector
     λ = T(λ)
     γ = T(γ)
     η = T(η)
@@ -312,9 +314,34 @@ function getauc(pred::Vector{T}, label::AbstractCovariate{S}, trainselector::Abs
     aucin, aucout
 end
 
-function getlogloss(pred::Vector{T}, label::AbstractCovariate{S}; selector::AbstractVector{Bool} = BitArray{1}()) where {T <: AbstractFloat} where {S <: AbstractFloat}
-    label = convert(Vector{S}, label)
-    label::Vector{S} = length(selector) == 0 ? label : label[selector]
-    pred::Vector{T} = length(selector) == 0 ? pred : pred[selector]
-    mean(logloss.(label, pred))
+function getlogloss(pred::Vector{T}, label::AbstractCovariate{S}, trainselector::AbstractBoolVariate, validselector::AbstractBoolVariate; slicelength::Integer = SLICELENGTH) where {T <: AbstractFloat} where {S <: AbstractFloat}
+    fromobs = 1
+    toobs = length(pred)
+    slicelength = verifyslicelength(fromobs, toobs, slicelength)
+    predslices = slice(pred, fromobs, toobs, slicelength)
+    labelslices = slice(label, fromobs, toobs, slicelength)
+    trainslices = slice(trainselector, fromobs, toobs, slicelength)
+    validslices = slice(validselector, fromobs, toobs, slicelength)
+    zipslices = zip4(predslices, labelslices, trainslices, validslices)
+    trainlosssum, validlosssum, traincount, validcount = fold((0.0, 0.0, 0, 0), zipslices) do acc, zipslice
+         trainlosssum, validlosssum, traincount, validcount = acc
+         predslice, labelslice, trainslice, validslice = zipslice
+         for i in 1:length(predslice)
+             if trainslice[i]
+                trainlosssum += logloss(labelslice[i], predslice[i])
+                traincount += 1
+             end
+             if validslice[i]
+                validlosssum += logloss(labelslice[i], predslice[i])
+                validcount += 1
+             end
+         end
+         trainlosssum, validlosssum, traincount, validcount
+    end
+    trainlosssum / traincount, validlosssum / validcount
+    
+    # label = convert(Vector{S}, label)
+    # label::Vector{S} = length(selector) == 0 ? label : label[selector]
+    # pred::Vector{T} = length(selector) == 0 ? pred : pred[selector]
+    # mean(logloss.(label, pred))
 end

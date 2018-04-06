@@ -82,7 +82,7 @@ function splitnodeidsslice!(nodeids::Vector{<:Integer}, factors, issplitnode::Ve
                             leftpartitions::Vector{Vector{Bool}}, factorindex::Vector{Int64},
                             fromobs::Integer, toobs::Integer, slicelength::Integer)
     if length(factors) > 0
-        factorslices = zipn([slice(factor, fromobs, toobs, slicelength) for factor in factors])
+        factorslices = zipn(Tuple([slice(factor, fromobs, toobs, slicelength) for factor in factors]))
         nodeslices = slice(nodeids, fromobs, toobs, slicelength)
         foreach(zip2(nodeslices, factorslices)) do x
             nodeslice, fslices = x
@@ -126,7 +126,7 @@ function splitnodeids!(nodeids::Vector{<:Integer}, layer::TreeLayer{T}, slicelen
              factorindex[i] = findfirst(factors, factor)
          end
     end
-    factors = widenfactors(factors)
+    #factors = widenfactors(factors)
     leftpartitions = [isa(n, SplitNode) && n.isactive ? [n.leftnode.partitions[n.factor].inclmissing; n.leftnode.partitions[n.factor].mask] : Vector{Bool}() for n in nodes]
 
     nthreads = singlethread ? 1 : Threads.nthreads()

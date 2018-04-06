@@ -74,19 +74,19 @@ Base.length(boolvar::AbstractBoolVariate) = boolvar.length
 Base.length(factor::AbstractFactor{T}) where {T<:Unsigned} = factor.length
 
 
-function widenfactors(factors::Vector{<:AbstractFactor})
-    if all(map((factor -> issubtype(typeof(factor), AbstractFactor{UInt8})), factors))
-        factors
-    elseif all(map((factor -> issubtype(typeof(factor), AbstractFactor{UInt16})), factors))
-            factors
-    elseif all(map((factor -> issubtype(typeof(factor), AbstractFactor{UInt32})), factors))
-            factors
-    elseif all(map((factor -> issubtype(typeof(factor), AbstractFactor{UInt8}) || issubtype(typeof(factor), AbstractFactor{UInt16})), factors))
-        [issubtype(typeof(factor), AbstractFactor{UInt16}) ? factor : WiderFactor{UInt8, UInt16}(factor) for factor in factors]
-    else
-        [issubtype(typeof(factor), AbstractFactor{UInt32}) ? factor : (issubtype(typeof(factor), AbstractFactor{UInt16}) ? WiderFactor{UInt16, UInt32}(factor) : WiderFactor{UInt8, UInt32}(factor)) for factor in factors]
-    end
-end
+# function widenfactors(factors::Vector{<:AbstractFactor})
+#     if all(map((factor -> issubtype(typeof(factor), AbstractFactor{UInt8})), factors))
+#         factors
+#     elseif all(map((factor -> issubtype(typeof(factor), AbstractFactor{UInt16})), factors))
+#             factors
+#     elseif all(map((factor -> issubtype(typeof(factor), AbstractFactor{UInt32})), factors))
+#             factors
+#     elseif all(map((factor -> issubtype(typeof(factor), AbstractFactor{UInt8}) || issubtype(typeof(factor), AbstractFactor{UInt16})), factors))
+#         [issubtype(typeof(factor), AbstractFactor{UInt16}) ? factor : WiderFactor{UInt8, UInt16}(factor) for factor in factors]
+#     else
+#         [issubtype(typeof(factor), AbstractFactor{UInt32}) ? factor : (issubtype(typeof(factor), AbstractFactor{UInt16}) ? WiderFactor{UInt16, UInt32}(factor) : WiderFactor{UInt8, UInt32}(factor)) for factor in factors]
+#     end
+# end
 
 function DataFrame(path::String; preload::Bool = true)
     path = abspath(path)
@@ -479,11 +479,11 @@ function tocsv(path::String, dataframe::AbstractDataFrame)
     covslices = [slicestring(c, 1, len, SLICELENGTH) for c in covariates]
     strslices = begin
         if length(factors) == 0
-            zipn(covslices)
+            zipn(Tuple(covslices))
         elseif length(covariates) == 0
-            zipn(fslices)
+            zipn(Tuple(fslices))
         else
-            zipn([fslices; covslices])
+            zipn(Tuple([fslices; covslices]))
         end
     end
     ncol = length(factors) + length(covariates)

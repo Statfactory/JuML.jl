@@ -43,6 +43,30 @@ function factor(covariate::AbstractCovariate{S}) where {S<:AbstractFloat}
     BinCovFactor(getname(covariate), bins, covariate)
 end
 
+function factor(covariate::GroupStatsCovariate{N, S}) where {S<:AbstractFloat} where {N}
+    if eltype(values(covariate.groupstats.stats)) == Int64 && covariate.transform == identity
+        bins = unique(collect(values(covariate.groupstats.stats)))
+        BinCovFactor(getname(covariate), bins, covariate)
+    else
+        fromobs = 1
+        toobs = length(covariate)
+        slicelength = verifyslicelength(fromobs, toobs, SLICELENGTH)
+        slices = slice(covariate, fromobs, toobs, slicelength)
+        vset = fold(Set{S}(), slices) do acc, slice
+            for i in 1:length(slice)
+                v = slice[i]
+                if !isnan(v)
+                    push!(acc, v)
+                end
+            end
+            acc
+        end
+        bins = collect(vset)
+        sort!(bins)
+        BinCovFactor(getname(covariate), bins, covariate)
+    end
+end
+
 function slice(factor::BinCovFactor{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:Unsigned}
     bins = factor.bins
     binlenm1 = convert(T, length(bins) - 1)

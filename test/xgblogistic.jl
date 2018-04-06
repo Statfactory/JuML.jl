@@ -7,8 +7,8 @@ traintest_df = DataFrame(joinpath("data", "airlinetraintest"))
 distance = traintest_df["Distance"]
 deptime = traintest_df["DepTime"]
 label = covariate(traintest_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)
-deptime = factor(traintest_df["DepTime"], 1:2930)
-distance = factor(traintest_df["Distance"], 11:4962)
+deptime = factor(traintest_df["DepTime"])
+distance = factor(traintest_df["Distance"])
 
 factors = [traintest_df.factors; [deptime, distance]]
 

@@ -22,6 +22,10 @@ function Seq(::Type{T}, iter) where {T}
                        end))
 end
 
+function Base.eltype(x::Seq{T}) where {T}
+    T
+end
+
 function Seq(range::Range{T}) where {T}
     Seq(T, range)
 end
@@ -232,30 +236,58 @@ function zip5(x1s::ConsSeq{T1}, x2s::ConsSeq{T2}, x3s::ConsSeq{T3}, x4s::ConsSeq
             )
 end
 
- function zipn(xs::Vector{<:Seq{T}}) where {T}
-     EmptySeq{Vector{T}}()
- end
+#  function zipn(xs::Vector{<:Seq{T}}) where {T}
+#      EmptySeq{Vector{T}}()
+#  end
 
- function zipn(xs::Vector{ConsSeq{T}}) where {T}
-     return ConsSeq{Vector{T}}(() ->
-         begin
-             y = [x.genfun() for x in xs]
-             state = [s for (s, _) in y]
-             next = [f for (_, f) in y]
-             state, sarg ->
-                 begin
-                     res = [b(a) for (a, b) in zip(sarg, next)]
-                     newstate = [x for (_, x) in res]
-                     if all([!isnull(a) for (a, b) in res])
-                         v = [get(x) for (x, _) in res]
-                         Nullable{Vector{T}}(v), newstate
-                     else
-                         Nullable{Vector{T}}(), newstate
-                     end
-                 end
-         end
-     )
- end
+#  function zipn(xs::Vector{ConsSeq{T}}) where {T}
+#      return ConsSeq{Vector{T}}(() ->
+#          begin
+#              y = [x.genfun() for x in xs]
+#              state = [s for (s, _) in y]
+#              next = [f for (_, f) in y]
+#              state, sarg ->
+#                  begin
+#                      res = [b(a) for (a, b) in zip(sarg, next)]
+#                      newstate = [x for (_, x) in res]
+#                      if all([!isnull(a) for (a, b) in res])
+#                          v = [get(x) for (x, _) in res]
+#                          Nullable{Vector{T}}(v), newstate
+#                      else
+#                          Nullable{Vector{T}}(), newstate
+#                      end
+#                  end
+#          end
+#      )
+#  end
+
+ function zipn(xs::NTuple{N, Seq}) where {N}
+    eltypes = map(eltype, xs)
+    EmptySeq{Tuple{eltypes...}}()
+end
+
+function zipn(xs::NTuple{N, ConsSeq}) where {N}
+    eltypes = map(eltype, xs)
+    return ConsSeq{Tuple{eltypes...}}(() ->
+        begin
+            y = map((x -> x.genfun()), xs)
+            state = map((x -> x[1]), y)
+            next = map((x -> x[2]), y)
+            state, sarg ->
+                begin
+                    res = map((x -> x[2](x[1])), zip(sarg, next))
+                    newstate = map((x -> x[2]), res)
+                    if all([!isnull(a) for (a, b) in res])
+                        v = map((x -> get(x[1])), res)
+                        Nullable{Tuple{eltypes...}}(Tuple(v)), newstate
+                    else
+                        Nullable{Tuple{eltypes...}}(), newstate
+                    end
+                end
+        end
+    )
+end
+
 
 function Base.zip(xs::Tuple{Seq{T}}) where {T}
     map(xs[1], Tuple{T}) do x
