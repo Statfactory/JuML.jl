@@ -22,8 +22,8 @@ function slice(cov::IfElseCovariate{S, T, U}, fromobs::Integer, toobs::Integer, 
     falsecov = cov.falsecovariate
     f = ((x, y, z) -> x ? y : z)
     slicelength = verifyslicelength(fromobs, toobs, slicelength) 
-    slices = zip3(slice(ifboolvar, fromobs, toobs, slicelength), slice(truecov, fromobs, toobs, slicelength),
-                  slice(falsecov, fromobs, toobs, slicelength)) 
+    slices = zip(slice(ifboolvar, fromobs, toobs, slicelength), slice(truecov, fromobs, toobs, slicelength),
+                 slice(falsecov, fromobs, toobs, slicelength)) 
     mapslice3(f, slices, slicelength, U)
 end
 

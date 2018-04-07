@@ -1,80 +1,76 @@
-struct GroupStats{N} 
+struct GroupStats{N, U, S} 
     keyvars::NTuple{N, StatVariate}
     covariate::Nullable{AbstractCovariate}
-    stats::Dict
+    stats::Dict{NTuple{N, U}, S}
 end
 
-function getgroupstats(factor1::AbstractFactor{S}, factor2::AbstractFactor{T}; slicelength::Integer = SLICELENGTH) where {S<:Unsigned} where {T<:Unsigned}
+function getgroupstats(factors::NTuple{N, AbstractFactor}; slicelength::Integer = SLICELENGTH) where {N}
+    U = promote_type(map((s -> eltype(s)), factors)...)
+    u = zero(U)
     fromobs = 1
-    toobs = length(factor1)
-    slicelength = verifyslicelength(fromobs, toobs, slicelength) 
-    slices = zip2(slice(factor1, fromobs, toobs, slicelength), slice(factor2, fromobs, toobs, slicelength))
-    dict = fold(Dict{Tuple{S, T}, Int64}(), slices) do d, slice
-        slice1::SubArray{S,1,Array{S,1},Tuple{UnitRange{Int64}},true}, slice2::SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true} = slice
-        @inbounds for i in 1:length(slice1)
-            v = slice1[i], slice2[i]
-            d[v] = get(d, v, 0) + 1
-        end
-        d
-    end
-    GroupStats{2}((factor1, factor2), Nullable(), dict)
-end
-
-function getgroupstats(statvars::NTuple{N, StatVariate}; slicelength::Integer = SLICELENGTH) where {N}
-    eltypes = map((s -> eltype(s)), statvars)
-    dict = Dict{Tuple{eltypes...}, Int64}()
-    fromobs = 1
-    toobs = length(statvars[1])
+    toobs = length(factors[1])
     slicelength = verifyslicelength(fromobs, toobs, slicelength)  
-    slices = zipn(map((s -> slice(s, fromobs, toobs, slicelength)), statvars))
-    dict = fold(Dict{Tuple{eltypes...}, Int64}(), slices) do d, slice
-        if N == 2
-            slice1, slice2 = slice
-            for i in 1:length(slice1)
-                v = slice1[i], slice2[i]
-                d[v] = get(d, v, 0) + 1
+    if N == 1
+        slices = zip(slice(factors[1], fromobs, toobs, slicelength))
+    elseif N == 2
+        slices = zip(slice(factors[1], fromobs, toobs, slicelength), slice(factors[2], fromobs, toobs, slicelength))
+    elseif N == 3
+        slices = zip(slice(factors[1], fromobs, toobs, slicelength), slice(factors[2], fromobs, toobs, slicelength), slice(factors[3], fromobs, toobs, slicelength))
+    else
+        slices = zip(map((s -> slice(s, fromobs, toobs, slicelength)), factors))
+    end
+    dict = fold(Dict{NTuple{N, U}, Int64}(), slices) do d, slice
+        if N == 1
+            @inbounds for i in 1:length(slice[1])
+                v = slice[i]
+                d[v] = get(d, (v, ), 0) + 1
             end
+        elseif N == 2
+            slice1, slice2 = slice
+            @inbounds for i in 1:length(slice1)
+                v = oftype(u, slice1[i]), oftype(u, slice2[i])
+                d[v] = get(d, v, 0) + 1
+            end          
         elseif N == 3
             slice1, slice2, slice3 = slice
-            for i in 1:length(slice1)
-                v = slice1[i], slice2[i], slice3[i]
+            @inbounds for i in 1:length(slice1)
+                v = oftype(u, slice1[i]), oftype(u, slice2[i]), oftype(u, slice3[i])
                 d[v] = get(d, v, 0) + 1
             end
         else
             for i in 1:length(slice[1])
-                v = map((x -> x[i]), slice)
+                v = map((x -> oftype(u, x[i])), slice)
                 d[v] = get(d, v, 0) + 1
             end
         end
         d
     end
-    GroupStats{N}(statvars, Nullable(), dict)
+    GroupStats{N, U, Int64}(factors, Nullable(), dict)
 end
 
-function getgroupstats(statvar::StatVariate; slicelength::Integer = SLICELENGTH)
-    statvars = (statvar, )
-    getgroupstats(statvars; slicelength = slicelength) 
+function getgroupstats(factors::AbstractFactor...; slicelength::Integer = SLICELENGTH) 
+    getgroupstats(factors; slicelength = slicelength)
 end
 
-function getgroupstats(statvars::NTuple{N, StatVariate}, cov::AbstractCovariate{S}; slicelength::Integer = SLICELENGTH) where {N} where {S<:AbstractFloat}
-    eltypes = map((s -> eltype(s)), statvars)
-    dict = Dict{Tuple{eltypes...}, CovariateStats}()
+function getgroupstats(cov::AbstractCovariate{S}, factors::NTuple{N, AbstractFactor}; slicelength::Integer = SLICELENGTH) where {N} where {S<:AbstractFloat}
+    U = promote_type(map((s -> eltype(s)), factors)...)
+    u = zero(U)
     fromobs = 1
-    toobs = length(statvars[1])
+    toobs = length(factors[1])
     slicelength = verifyslicelength(fromobs, toobs, slicelength)  
-    slices = zip(map((s -> slice(s, fromobs, toobs, slicelength)), statvars))
+    slices = zip(map((s -> slice(s, fromobs, toobs, slicelength)), factors))
     covslices = slice(cov, fromobs, toobs, slicelength)
-    zipslices = zip2(slices, covslices)
-    fold(dict, zipslices) do d, zipslice
+    zipslices = zip(slices, covslices)
+    dict = fold(Dict{NTuple{N, U}, CovariateStats}(), zipslices) do d, zipslice
         slice, covslice = zipslice
         for i in 1:length(slice[1])
-            x = map((x -> x[i]), slice)
+            y = map((x -> oftype(u, x[i])), slice)
             v = covslice[i]
-            if !(x in keys(d))
+            if !(y in keys(d))
                 covstats = CovariateStats(0, 0, NaN64, NaN64, NaN64, NaN64, NaN64, NaN64, NaN64)
-                d[x] = covstats
+                d[y] = covstats
             else
-                covstats = d[x]
+                covstats = d[y]
             end
             covstats.obscount += 1
             if isnan(v)
@@ -104,10 +100,9 @@ function getgroupstats(statvars::NTuple{N, StatVariate}, cov::AbstractCovariate{
         stats.mean = stats.sum / (stats.obscount - stats.nancount)
         stats.std = sqrt(((stats.sum2 - stats.sum * stats.sum / (stats.obscount - stats.nancount)) / (stats.obscount - stats.nancount - 1)))
     end
-    GroupStats{N}(statvars, Nullable(cov), dict)
+    GroupStats{N, U, CovariateStats}(factors, Nullable(cov), dict)
 end
 
-function getgroupstats(statvar::StatVariate, cov::AbstractCovariate{S}; slicelength::Integer = SLICELENGTH) where {S<:AbstractFloat}
-    statvars = (statvar, )
-    getgroupstats(statvars, cov; slicelength = slicelength) 
+function getgroupstats(cov::AbstractCovariate{S}, factors::AbstractFactor...; slicelength::Integer = SLICELENGTH) where {S<:AbstractFloat}
+    getgroupstats(cov, factors; slicelength = slicelength)
 end

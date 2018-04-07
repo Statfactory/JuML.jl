@@ -33,7 +33,7 @@ function sumgradientslice!(∂𝑙sum0, ∂²𝑙sum0, nodeids::Vector{<:Integer
     factorslices = slice(factor, fromobs, toobs, slicelength)
     ∂𝑙slices = slice(∂𝑙covariate, fromobs, toobs, slicelength)
     ∂²𝑙slices = slice(∂²𝑙covariate, fromobs, toobs, slicelength)
-    zipslices = zip4(nodeslices, factorslices, ∂𝑙slices, ∂²𝑙slices)
+    zipslices = zip(nodeslices, factorslices, ∂𝑙slices, ∂²𝑙slices)
     fold((∂𝑙sum0, ∂²𝑙sum0), zipslices) do gradsum, zipslice
         nodeslice, factorslice, ∂𝑙slice, ∂²𝑙slice = zipslice
         ∂𝑙sum, ∂²𝑙sum = gradsum
@@ -82,9 +82,9 @@ function splitnodeidsslice!(nodeids::Vector{<:Integer}, factors, issplitnode::Ve
                             leftpartitions::Vector{Vector{Bool}}, factorindex::Vector{Int64},
                             fromobs::Integer, toobs::Integer, slicelength::Integer)
     if length(factors) > 0
-        factorslices = zipn(Tuple([slice(factor, fromobs, toobs, slicelength) for factor in factors]))
+        factorslices = zip(Tuple([slice(factor, fromobs, toobs, slicelength) for factor in factors]))
         nodeslices = slice(nodeids, fromobs, toobs, slicelength)
-        foreach(zip2(nodeslices, factorslices)) do x
+        foreach(zip(nodeslices, factorslices)) do x
             nodeslice, fslices = x
             @inbounds for i in 1:length(nodeslice)
                 nodeid = nodeslice[i]
@@ -608,7 +608,7 @@ function Base.convert(::Type{List{List{TreeNode{T}}}}, tree::ConsTree{TreeNode{T
     node = tree.value
     left = convert(List{List{TreeNode{T}}}, tree.lefttree)
     right = convert(List{List{TreeNode{T}}}, tree.righttree)
-    ConsList{List{TreeNode{T}}}(ConsList{TreeNode{T}}(node), map((x -> x[1] + x[2]), zip2(left, right), List{TreeNode{T}}))
+    ConsList{List{TreeNode{T}}}(ConsList{TreeNode{T}}(node), map((x -> x[1] + x[2]), zip(left, right), List{TreeNode{T}}))
 end
 
 function prune(node::SplitNode{T}, λ::T, γ::T) where {T<:AbstractFloat}

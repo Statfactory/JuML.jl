@@ -1,5 +1,5 @@
 mutable struct CachedBoolVariate <: AbstractBoolVariate
-    cache::Nullable{SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}}
+    cache::Nullable{BitArray{1}}
     basevariate::AbstractBoolVariate
     lockobj::Threads.TatasLock
 end
@@ -9,11 +9,11 @@ Base.length(var::CachedBoolVariate) = length(var.basevariate)
 getname(var::CachedBoolVariate) = getname(var.basevariate)
 
 function CachedBoolVariate(basevariate::AbstractBoolVariate) 
-    CachedBoolVariate(Nullable{SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}}(), basevariate, Threads.TatasLock())  
+    CachedBoolVariate(Nullable{BitArray{1}}(), basevariate, Threads.TatasLock())  
 end
 
 function cache(basevariate::AbstractBoolVariate) 
-    CachedBoolVariate(Nullable{SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}}(), basevariate, Threads.TatasLock())  
+    CachedBoolVariate(Nullable{BitArray{1}}(), basevariate, Threads.TatasLock())  
 end
 
 function slice(boolvariate::CachedBoolVariate, fromobs::Integer, toobs::Integer, slicelength::Integer) 
@@ -26,8 +26,16 @@ function slice(boolvariate::CachedBoolVariate, fromobs::Integer, toobs::Integer,
         lock(lockobj)
         try
             if isnull(boolvariate.cache)
-                v, _ = tryread(slice(basevar, 1, length(boolvariate), length(boolvariate)))
-                boolvariate.cache = v
+                slices = slice(basevar, 1, length(basevar), SLICELENGTH)
+                cachedata = BitArray{1}(length(basevar))
+                fold(0, slices) do offset, slice
+                    n = length(slice)
+                    @inbounds for i in 1:n
+                        cachedata[i + offset] = slice[i]
+                    end
+                    offset += n
+                end
+                boolvariate.cache = Nullable{ BitArray{1}}(cachedata)
             end
         finally
             unlock(lockobj)

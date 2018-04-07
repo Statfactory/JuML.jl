@@ -1,5 +1,5 @@
 mutable struct CachedFactor{T<:Unsigned} <: AbstractFactor{T}
-    cache::Nullable{SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}
+    cache::Nullable{Vector{T}}
     basefactor::AbstractFactor{T}
     lockobj::Threads.TatasLock
 end
@@ -11,15 +11,11 @@ getname(var::CachedFactor) = getname(var.basefactor)
 getlevels(var::CachedFactor) = getlevels(var.basefactor)
 
 function CachedFactor(factor::AbstractFactor{T}) where {T<:Unsigned}
-    if isa(factor, WiderFactor{T, T})
-        CachedFactor{T}(Nullable{SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}(), factor.basefactor, Threads.TatasLock()) 
-    else
-        CachedFactor{T}(Nullable{SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}(), factor, Threads.TatasLock()) 
-    end
+    CachedFactor{T}(Nullable{Vector{T}}(), factor, Threads.TatasLock()) 
 end
 
 function cache(basefactor::AbstractFactor{T}) where {T<:Unsigned}
-    CachedFactor{T}(Nullable{SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}(), basefactor, Threads.TatasLock()) 
+    CachedFactor{T}(Nullable{Vector{T}}(), basefactor, Threads.TatasLock()) 
 end
 
 function slice(factor::CachedFactor{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:Unsigned}
@@ -32,8 +28,16 @@ function slice(factor::CachedFactor{T}, fromobs::Integer, toobs::Integer, slicel
         lock(lockobj)
         try
             if isnull(factor.cache)
-                v, _ = tryread(slice(basefactor, 1, length(factor), length(factor)))
-                factor.cache = v
+                slices = slice(basefactor, 1, length(basefactor), SLICELENGTH)
+                cachedata = Vector{T}(length(basefactor))
+                fold(0, slices) do offset, slice
+                    n = length(slice)
+                    @inbounds for i in 1:n
+                        cachedata[i + offset] = slice[i]
+                    end
+                    offset += n
+                end
+                factor.cache = Nullable{Vector{T}}(cachedata)
             end
         finally
             unlock(lockobj)

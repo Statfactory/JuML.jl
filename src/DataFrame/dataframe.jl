@@ -479,11 +479,11 @@ function tocsv(path::String, dataframe::AbstractDataFrame)
     covslices = [slicestring(c, 1, len, SLICELENGTH) for c in covariates]
     strslices = begin
         if length(factors) == 0
-            zipn(Tuple(covslices))
+            zip(Tuple(covslices))
         elseif length(covariates) == 0
-            zipn(Tuple(fslices))
+            zip(Tuple(fslices))
         else
-            zipn(Tuple([fslices; covslices]))
+            zip(Tuple([fslices; covslices]))
         end
     end
     ncol = length(factors) + length(covariates)
@@ -502,22 +502,21 @@ function tocsv(path::String, dataframe::AbstractDataFrame)
     close(iostream)
 end
 
-function Base.eltype(x::StatVariate)
-    if isa(x, AbstractFactor{UInt8})
-        UInt8
-    elseif isa(x, AbstractFactor{UInt16})
-        UInt16
-    elseif isa(x, AbstractFactor{UInt32})
-        UInt32
-    elseif isa(x, AbstractCovariate{Float32})
-        Float32
-    elseif isa(x, AbstractCovariate{Float64})
-        Float64
-    elseif isa(x, AbstractBoolVariate)
-        Bool
-    elseif isa(x, AbstractDateTimeVariate)
-        Int64
-    end
+function Base.eltype(x::AbstractFactor{T}) where {T<:Unsigned}
+    T
 end
+
+function Base.eltype(x::AbstractCovariate{T}) where {T<:AbstractFloat}
+    T
+end
+
+function Base.eltype(x::AbstractBoolVariate) 
+    Bool
+end
+
+function Base.eltype(x::AbstractDateTimeVariate) 
+    Int64
+end
+
 
 

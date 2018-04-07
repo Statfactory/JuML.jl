@@ -171,7 +171,7 @@ function predict(model::XGModel{T}, dataframe::AbstractDataFrame; μ::Real = 0.5
         end
     end
 
-    mappedfactors = map(cache, widenfactors(collect(map((x -> x[1]), values(factormap)))))
+    mappedfactors = map(cache, collect(map((x -> x[1]), values(factormap))))
     for (i, f) in enumerate(keys(factormap))
         _, levelmap, newind, levelcount = factormap[f]
         factormap[f] = mappedfactors[i], levelmap, newind, levelcount
@@ -255,7 +255,7 @@ function getauc(pred::Vector{T}, label::AbstractCovariate{S}, trainselector::Abs
     uniqcountout = Dict{T, Int64}()
     labelaggout = Dict{T, S}()
 
-    zipslices = zip3(labelslices, slice(trainselector, 1, sellen, slicelength), slice(validselector, 1, sellen, slicelength))
+    zipslices = zip(labelslices, slice(trainselector, 1, sellen, slicelength), slice(validselector, 1, sellen, slicelength))
     fold(0, zipslices) do offset, slice
         labelslice, trainselslice, validselslice = slice
         for i in 1:length(labelslice)
@@ -322,7 +322,7 @@ function getlogloss(pred::Vector{T}, label::AbstractCovariate{S}, trainselector:
     labelslices = slice(label, fromobs, toobs, slicelength)
     trainslices = slice(trainselector, fromobs, toobs, slicelength)
     validslices = slice(validselector, fromobs, toobs, slicelength)
-    zipslices = zip4(predslices, labelslices, trainslices, validslices)
+    zipslices = zip(predslices, labelslices, trainslices, validslices)
     trainlosssum, validlosssum, traincount, validcount = fold((0.0, 0.0, 0, 0), zipslices) do acc, zipslice
          trainlosssum, validlosssum, traincount, validcount = acc
          predslice, labelslice, trainslice, validslice = zipslice

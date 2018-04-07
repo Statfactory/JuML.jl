@@ -1,4 +1,4 @@
-const SLICELENGTH = 10000
+const SLICELENGTH = 100000
 
 const MISSINGLEVEL = "."
 

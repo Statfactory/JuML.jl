@@ -13,7 +13,7 @@ function slice(boolvar::IfElseBoolVariate, fromobs::Integer, toobs::Integer, sli
     falseboolvar = boolvar.falseboolvar
     f = ((x, y, z) -> x ? y : z)
     slicelength = verifyslicelength(fromobs, toobs, slicelength) 
-    slices = zip3(slice(ifboolvar, fromobs, toobs, slicelength), slice(trueboolvar, fromobs, toobs, slicelength),
+    slices = zip(slice(ifboolvar, fromobs, toobs, slicelength), slice(trueboolvar, fromobs, toobs, slicelength),
                   slice(falseboolvar, fromobs, toobs, slicelength)) 
     mapslice3(f, slices, slicelength) 
 end

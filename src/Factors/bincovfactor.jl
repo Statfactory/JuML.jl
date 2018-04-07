@@ -43,8 +43,8 @@ function factor(covariate::AbstractCovariate{S}) where {S<:AbstractFloat}
     BinCovFactor(getname(covariate), bins, covariate)
 end
 
-function factor(covariate::GroupStatsCovariate{N, S}) where {S<:AbstractFloat} where {N}
-    if eltype(values(covariate.groupstats.stats)) == Int64 && covariate.transform == identity
+function factor(covariate::GroupStatsCovariate{N, U, Int64, T}) where {T<:AbstractFloat} where {N} where {U}
+    if covariate.transform == identity
         bins = unique(collect(values(covariate.groupstats.stats)))
         BinCovFactor(getname(covariate), bins, covariate)
     else

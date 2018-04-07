@@ -1,5 +1,5 @@
 mutable struct CachedCovariate{T<:AbstractFloat} <: AbstractCovariate{T}
-    cache::Nullable{SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}
+    cache::Nullable{Vector{T}}
     basecovariate::AbstractCovariate{T}
     lockobj::Threads.TatasLock
 end
@@ -9,11 +9,11 @@ Base.length(var::CachedCovariate) = length(var.basecovariate)
 getname(var::CachedCovariate) = getname(var.basecovariate)
 
 function CachedCovariate(basecovariate::AbstractCovariate{T}) where {T<:AbstractFloat}
-    CachedCovariate{T}(Nullable{SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}(), basecovariate, Threads.TatasLock())  
+    CachedCovariate{T}(Nullable{Vector{T}}(), basecovariate, Threads.TatasLock())  
 end
 
 function cache(basecovariate::AbstractCovariate{T}) where {T<:AbstractFloat}
-    CachedCovariate{T}(Nullable{SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}(), basecovariate, Threads.TatasLock())  
+    CachedCovariate{T}(Nullable{Vector{T}}(), basecovariate, Threads.TatasLock())  
 end
 
 function slice(covariate::CachedCovariate{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:AbstractFloat}
@@ -26,8 +26,16 @@ function slice(covariate::CachedCovariate{T}, fromobs::Integer, toobs::Integer, 
         lock(lockobj)
         try
             if isnull(covariate.cache)
-                v, _ = tryread(slice(basecov, 1, length(covariate), length(covariate)))
-                covariate.cache = v
+                slices = slice(basecov, 1, length(basecov), SLICELENGTH)
+                cachedata = Vector{T}(length(basecov))
+                fold(0, slices) do offset, slice
+                    n = length(slice)
+                    @inbounds for i in 1:n
+                        cachedata[i + offset] = slice[i]
+                    end
+                    offset += n
+                end
+                covariate.cache = Nullable{Vector{T}}(cachedata)
             end
         finally
             unlock(lockobj)

@@ -17,7 +17,7 @@ function slice(dtvariate::Trans2DateTimeVariate, fromobs::Integer, toobs::Intege
         Dates.datetime2epochms(f(dt1, dt2))
     end
     slicelength = verifyslicelength(fromobs, toobs, slicelength) 
-    slices = zip2(slice(base1, fromobs, toobs, slicelength), slice(base2, fromobs, toobs, slicelength)) 
+    slices = zip(slice(base1, fromobs, toobs, slicelength), slice(base2, fromobs, toobs, slicelength)) 
     mapslice2(g, slices, slicelength, Int64)
 end
 

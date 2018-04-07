@@ -19,6 +19,6 @@ function slice(boolvar::Trans2DateTimeBoolVariate, fromobs::Integer, toobs::Inte
         end
     end
     slicelength = verifyslicelength(fromobs, toobs, slicelength) 
-    slices = zip2(slice(base1, fromobs, toobs, slicelength), slice(base2, fromobs, toobs, slicelength)) 
+    slices = zip(slice(base1, fromobs, toobs, slicelength), slice(base2, fromobs, toobs, slicelength)) 
     mapslice2(g, slices, slicelength, Bool)
 end

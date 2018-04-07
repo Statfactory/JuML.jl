@@ -6,12 +6,12 @@ mutable struct GroupStatsBoolVariate <:AbstractBoolVariate
 end
 
 function slice(boolvar::GroupStatsBoolVariate, fromobs::Integer, toobs::Integer, slicelength::Integer) 
-    factors = widenfactors(boolvar.groupstats.factors)
+    factors = boolvar.groupstats.factors
     dims = Tuple(boolvar.groupstats.dims) #Tuple([length(getlevels(factor)) + 1 for factor in factors])
     k = length(factors)
     f = boolvar.transform
     slicelength = verifyslicelength(fromobs, toobs, slicelength) 
-    factorslices = zipn([slice(factor, fromobs, toobs, slicelength) for factor in factors])
+    factorslices = zip([slice(factor, fromobs, toobs, slicelength) for factor in factors])
     groupstats = boolvar.groupstats
     subindexmap = covariate.groupstats.subindexmap
 

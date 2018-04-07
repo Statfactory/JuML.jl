@@ -23,7 +23,7 @@ function slice(covariate::Trans2Covariate{S, T, U}, fromobs::Integer, toobs::Int
     basecov2 = covariate.basecovariate2
     f = covariate.transform
     slicelength = verifyslicelength(fromobs, toobs, slicelength) 
-    slices = zip2(slice(basecov1, fromobs, toobs, slicelength), slice(basecov2, fromobs, toobs, slicelength)) 
+    slices = zip(slice(basecov1, fromobs, toobs, slicelength), slice(basecov2, fromobs, toobs, slicelength)) 
     mapslice2(f, slices, slicelength, U)
 end
 
