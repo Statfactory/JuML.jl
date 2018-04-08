@@ -11,7 +11,7 @@ function getgroupstats(factors::NTuple{N, AbstractFactor}; slicelength::Integer 
     toobs = length(factors[1])
     slicelength = verifyslicelength(fromobs, toobs, slicelength)  
     if N == 1
-        slices = zip(slice(factors[1], fromobs, toobs, slicelength))
+        slices = slice(factors[1], fromobs, toobs, slicelength)
     elseif N == 2
         slices = zip(slice(factors[1], fromobs, toobs, slicelength), slice(factors[2], fromobs, toobs, slicelength))
     elseif N == 3
@@ -21,9 +21,9 @@ function getgroupstats(factors::NTuple{N, AbstractFactor}; slicelength::Integer 
     end
     dict = fold(Dict{NTuple{N, U}, Int64}(), slices) do d, slice
         if N == 1
-            @inbounds for i in 1:length(slice[1])
-                v = slice[i]
-                d[v] = get(d, (v, ), 0) + 1
+            @inbounds for i in 1:length(slice)
+                v = (slice[i], )
+                d[v] = get(d, v, 0) + 1
             end
         elseif N == 2
             slice1, slice2 = slice
