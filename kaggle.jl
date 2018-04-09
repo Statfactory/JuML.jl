@@ -20,7 +20,7 @@ using JuML
 
 #train_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\train_sample", preload = false)
 test_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test", preload = false)
-traintest_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\traintest", preload = false)
+traintest_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\traintest", preload = false)
 
 factors = traintest_df.factors
 label = traintest_df["is_attributed"] 
@@ -28,8 +28,9 @@ click_time = traintest_df["click_time"]
 summary(click_time)
 
 #clickday = factor(JuML.TransDateTimeCovariate("ClickDay", click_time, Dates.day)); 
-#clickhour24 = factor(JuML.TransDateTimeCovariate("ClickHour24", click_time, Dates.hour)) |> cache
-clickhour = factor(JuML.TransDateTimeCovariate("ClickHour", click_time, dt -> 24 * Dates.dayofweek(dt) + Dates.hour(dt))) |> cache
+clickhour24 = factor(JuML.TransDateTimeCovariate("ClickHour24", click_time, Dates.hour)) |> cache
+nmin = 15
+clickhour = factor(JuML.TransDateTimeCovariate("ClickHour", click_time, dt -> 24 * 60 * Dates.dayofweek(dt) + 60 * Dates.hour(dt) + nmin * div(Dates.minute(dt), nmin))) |> cache
 #clickminute = factor(JuML.TransDateTimeCovariate("ClickDay", click_time, dt -> 24 * 60 * Dates.dayofweek(dt) + 60 * Dates.hour(dt) + Dates.minute(dt)), 2312:6721)
 #summary(clickhour)
 
@@ -102,8 +103,15 @@ app = traintest_df["app"]
 channel = traintest_df["channel"] 
 device = traintest_df["device"] 
 
-hourcount = JuML.GroupStatsCovariate("hourcount", getgroupstats(clickhour)) |> cache
-iphourpcnt = JuML.GroupStatsCovariate("iphourpcnt", getgroupstats(ip, clickhour)) ./ hourcount
+hourcount = JuML.GroupStatsCovariate("hourcount", getgroupstats(clickhour24)) |> cache
+ipdevicehourpcnt = JuML.GroupStatsCovariate("iphourpcnt", getgroupstats(app, clickhour24)) ./ hourcount
+
+ipcount = JuML.GroupStatsCovariate("ipcount", getgroupstats(ip)) |> cache
+appcount = JuML.GroupStatsCovariate("appcount", getgroupstats(app)) |> cache
+oscount = JuML.GroupStatsCovariate("oscount", getgroupstats(os)) |> cache
+devicecount = JuML.GroupStatsCovariate("devicecount", getgroupstats(device)) |> cache
+channelcount = JuML.GroupStatsCovariate("channelcount", getgroupstats(channel)) |> cache
+
 
 oshourcount = JuML.GroupStatsCovariate("oshourcount", getgroupstats(os, clickhour));
 apphourcount = JuML.GroupStatsCovariate("apphourcount", getgroupstats(app, clickhour));
@@ -163,7 +171,7 @@ modelfactors = map((cov -> JuML.factor(cov)), [ipcount, iphourcount, oshourcount
 #poswgt = (1.0 - labelstats.mean) / labelstats.mean
 #datafactors = [clickhour24, JuML.OrdinalFactor(os), JuML.OrdinalFactor(device), JuML.OrdinalFactor(app,), JuML.OrdinalFactor(channel)]
 
-@time model = xgblogit(label, [factor(iphourpcnt)]]; trainselector = trainset, validselector = validset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = 100.0, minchildweight = 0.0, nrounds = 30, maxdepth = 5, ordstumps = true, pruning = false, leafwise = false, maxleaves = 32, caching = true, usefloat64 = false, singlethread = true, slicelength = 1000000);
+@time model = xgblogit(label, [factor(ipcount), factor(appcount), factor(oscount), factor(channelcount), factor(device)]; trainselector = trainset, validselector = validset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = 100.0, minchildweight = 0.0, nrounds = 10, maxdepth = 10, ordstumps = true, pruning = false, leafwise = false, maxleaves = 32, caching = true, usefloat64 = false, singlethread = true, slicelength = 1000000);
 
 #@time trainauc = getauc(model.pred, label; selector = trainset) 
 #@time testauc = getauc(model.pred, label; selector = testset)
@@ -176,6 +184,7 @@ is_attr = Covariate("is_attributed", model.pred[(length(model.pred) - testlen + 
 click_id = test_df["click_id"]
 sub_df = DataFrame(testlen, [click_id], [is_attr], JuML.AbstractBoolVariate[], JuML.AbstractDateTimeVariate[])
 JuML.tocsv("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\submission.csv", sub_df)
+
 
 
 
