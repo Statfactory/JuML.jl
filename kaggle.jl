@@ -20,7 +20,7 @@ using JuML
 
 #train_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\train_sample", preload = false)
 test_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test", preload = false)
-traintest_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\traintest", preload = false)
+traintest_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\traintest", preload = false)
 
 factors = traintest_df.factors
 label = traintest_df["is_attributed"] 
@@ -106,11 +106,38 @@ device = traintest_df["device"]
 hourcount = JuML.GroupStatsCovariate("hourcount", getgroupstats(clickhour24)) |> cache
 ipdevicehourpcnt = JuML.GroupStatsCovariate("iphourpcnt", getgroupstats(app, clickhour24)) ./ hourcount
 
-ipcount = JuML.GroupStatsCovariate("ipcount", getgroupstats(ip)) |> cache
-appcount = JuML.GroupStatsCovariate("appcount", getgroupstats(app)) |> cache
-oscount = JuML.GroupStatsCovariate("oscount", getgroupstats(os)) |> cache
-devicecount = JuML.GroupStatsCovariate("devicecount", getgroupstats(device)) |> cache
-channelcount = JuML.GroupStatsCovariate("channelcount", getgroupstats(channel)) |> cache
+#1way:
+ipcount = JuML.GroupStatsCovariate("ipcount", getgroupstats(ip));
+appcount = JuML.GroupStatsCovariate("appcount", getgroupstats(app));
+oscount = JuML.GroupStatsCovariate("oscount", getgroupstats(os));
+devicecount = JuML.GroupStatsCovariate("devicecount", getgroupstats(device));
+channelcount = JuML.GroupStatsCovariate("channelcount", getgroupstats(channel));
+
+#2way:
+ipappcount = JuML.GroupStatsCovariate("ipappcount", getgroupstats(ip, app));
+ipdevicecount = JuML.GroupStatsCovariate("ipdevicecount", getgroupstats(ip, device));
+iposcount = JuML.GroupStatsCovariate("iposcount", getgroupstats(ip, os));
+ipchannelcount = JuML.GroupStatsCovariate("ipchannelcount", getgroupstats(ip, channel));
+appdevicecount = JuML.GroupStatsCovariate("appdevicecount", getgroupstats(app, device));
+apposcount = JuML.GroupStatsCovariate("apposcount", getgroupstats(app, os));
+appchannelcount = JuML.GroupStatsCovariate("appchannelcount", getgroupstats(app, channel));
+deviceoscount = JuML.GroupStatsCovariate("deviceoscount", getgroupstats(device, os));
+devicechannelcount = JuML.GroupStatsCovariate("devicechannelcount", getgroupstats(device, channel));
+oschannelcount = JuML.GroupStatsCovariate("oschannelcount", getgroupstats(os, channel));
+
+#3way:
+deviceoschannelcount = JuML.GroupStatsCovariate("ipappcount", getgroupstats(device, os, channel));
+apposchannelcount = JuML.GroupStatsCovariate("ipdevicecount", getgroupstats(app, os, channel));
+deviceappchannelcount = JuML.GroupStatsCovariate("iposcount", getgroupstats(device, app, channel));
+deviceapposcount = JuML.GroupStatsCovariate("ipchannelcount", getgroupstats(device, app, os));
+iposchannelcount = JuML.GroupStatsCovariate("appdevicecount", getgroupstats(ip, os, channel));
+ipdevicechannelcount = JuML.GroupStatsCovariate("apposcount", getgroupstats(ip, device, channel));
+iposdevicecount = JuML.GroupStatsCovariate("appchannelcount", getgroupstats(ip, os, device));
+ipappchannelcount = JuML.GroupStatsCovariate("deviceoscount", getgroupstats(ip, app, channel));
+ipapposcount = JuML.GroupStatsCovariate("devicechannelcount", getgroupstats(ip, app, os));
+ipappdevicecount = JuML.GroupStatsCovariate("oschannelcount", getgroupstats(ip, app, device));
+
+
 
 
 oshourcount = JuML.GroupStatsCovariate("oshourcount", getgroupstats(os, clickhour));
@@ -167,11 +194,15 @@ labelstats = getstats(label)
 #modelfactors = [clickday, clickhour, fmean(ip, label, labelstats, ipgstats), fcount(ip, label, ipgstats), fmean(os, label, labelstats, osgstats), fcount(os, label, osgstats), fmean(device, label, labelstats, devicegstats), fcount(device, label, devicegstats), fmean(channel, label, labelstats, channelgstats), fcount(channel, label, channelgstats), fmean(app, label, labelstats, appgstats), fcount(app, label, appgstats)]
 #modelfactors = [fcount("hourstats", hourgstats), fcount("ipstats", ipgstats), fcount("osstats", osgstats), fcount("devicestats", devicegstats), fcount("channelstats", channelgstats), fcount("appstats", appgstats)]
 #modelfactors = map((cov -> quantilebin(cov, 250)), [iphourcount, ipappcount, ipdevicecount, ipcount, oscount, devicecount, appcount, channelcount, hourcount])
-modelfactors = map((cov -> JuML.factor(cov)), [ipcount, iphourcount, oshourcount, devicehourcount, apphourcount, channelhourcount])
+onewayfactors = map((cov -> JuML.factor(cov)), [ipcount, oscount, devicecount, appcount, channelcount])
 #poswgt = (1.0 - labelstats.mean) / labelstats.mean
 #datafactors = [clickhour24, JuML.OrdinalFactor(os), JuML.OrdinalFactor(device), JuML.OrdinalFactor(app,), JuML.OrdinalFactor(channel)]
 
-@time model = xgblogit(label, [factor(ipcount), factor(appcount), factor(oscount), factor(channelcount), factor(device)]; trainselector = trainset, validselector = validset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = 100.0, minchildweight = 0.0, nrounds = 10, maxdepth = 10, ordstumps = true, pruning = false, leafwise = false, maxleaves = 32, caching = true, usefloat64 = false, singlethread = true, slicelength = 1000000);
+twowayfactors = map((cov -> JuML.factor(cov)), [ipappcount, ipdevicecount, ipchannelcount, iposcount, appdevicecount, apposcount, appchannelcount, deviceoscount, devicechannelcount, oschannelcount])
+
+#threewayfactors = map((cov -> JuML.factor(cov)), [deviceoschannelcount, apposchannelcount, deviceappchannelcount, deviceapposcount, iposchannelcount, ipdevicechannelcount, iposdevicecount, ipappchannelcount, ipapposcount, ipappdevicecount])
+
+@time model = xgblogit(label, onewayfactors; trainselector = trainset, validselector = validset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = 100.0, minchildweight = 1.0, nrounds = 15, maxdepth = 13, ordstumps = true, pruning = false, leafwise = true, maxleaves = 256, caching = true, usefloat64 = false, singlethread = true, slicelength = 1000000);
 
 #@time trainauc = getauc(model.pred, label; selector = trainset) 
 #@time testauc = getauc(model.pred, label; selector = testset)

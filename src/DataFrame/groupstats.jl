@@ -16,6 +16,8 @@ function getgroupstats(factors::NTuple{N, AbstractFactor}; slicelength::Integer 
         slices = zip(slice(factors[1], fromobs, toobs, slicelength), slice(factors[2], fromobs, toobs, slicelength))
     elseif N == 3
         slices = zip(slice(factors[1], fromobs, toobs, slicelength), slice(factors[2], fromobs, toobs, slicelength), slice(factors[3], fromobs, toobs, slicelength))
+    elseif N == 4
+        slices = zip(slice(factors[1], fromobs, toobs, slicelength), slice(factors[2], fromobs, toobs, slicelength), slice(factors[3], fromobs, toobs, slicelength), slice(factors[4], fromobs, toobs, slicelength))
     else
         slices = zip(map((s -> slice(s, fromobs, toobs, slicelength)), factors))
     end
@@ -35,6 +37,12 @@ function getgroupstats(factors::NTuple{N, AbstractFactor}; slicelength::Integer 
             slice1, slice2, slice3 = slice
             @inbounds for i in 1:length(slice1)
                 v = oftype(u, slice1[i]), oftype(u, slice2[i]), oftype(u, slice3[i])
+                d[v] = get(d, v, 0) + 1
+            end
+        elseif N == 4
+            slice1, slice2, slice3, slice4 = slice
+            @inbounds for i in 1:length(slice1)
+                v = oftype(u, slice1[i]), oftype(u, slice2[i]), oftype(u, slice3[i]), oftype(u, slice4[i])
                 d[v] = get(d, v, 0) + 1
             end
         else

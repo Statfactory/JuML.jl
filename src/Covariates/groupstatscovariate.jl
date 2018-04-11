@@ -45,6 +45,18 @@ function slice(covariate::GroupStatsCovariate{N, U, S, T}, fromobs::Integer, too
                 buffer[i] = oftype(t, f(dict[(oftype(u, slice1[i]), oftype(u, slice2[i]))]))
             end
             view(buffer, 1:n)
+        elseif N == 3
+            slice1, slice2, slice3 = zipslice
+            for i in 1:n
+                buffer[i] = oftype(t, f(dict[(oftype(u, slice1[i]), oftype(u, slice2[i]), oftype(u, slice3[i]))]))
+            end
+            view(buffer, 1:n)
+        elseif N == 4
+            slice1, slice2, slice3, slice4 = zipslice
+            for i in 1:n
+                buffer[i] = oftype(t, f(dict[(oftype(u, slice1[i]), oftype(u, slice2[i]), oftype(u, slice3[i]), oftype(u, slice4[i]))]))
+            end
+            view(buffer, 1:n)
         else
             for i in 1:n
                 buffer[i] = oftype(t, f(dict[map((x -> oftype(u, x[i])), zipslice)]))
