@@ -81,7 +81,8 @@ clickhour = factor(JuML.TransDateTimeCovariate("ClickHour", click_time, dt -> 24
 
 #cutoff = DateTime(2017, 11, 9, 11, 0, 0)
 testhours = Set{Int}([4, 5, 9, 10, 13, 14])
-trainset = JuML.TransDateTimeBoolVariate("", click_time, t -> Dates.day(t) <= 8 && Dates.hour(t) in testhours) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x)) 
+testhoursset = JuML.TransDateTimeBoolVariate("", click_time, t -> Dates.hour(t) in testhours)
+trainset = JuML.TransDateTimeBoolVariate("", click_time, t -> Dates.day(t) <= 8 && Dates.hour(t) in testhours) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x))
 validset = JuML.TransDateTimeBoolVariate("", click_time, t -> Dates.day(t) == 9 && Dates.hour(t) in testhours) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x)) 
 summary(validset)
 
@@ -108,7 +109,7 @@ hourcount = JuML.GroupStatsCovariate("hourcount", getgroupstats(clickhour24)) |>
 ipdevicehourpcnt = JuML.GroupStatsCovariate("iphourpcnt", getgroupstats(app, clickhour24)) ./ hourcount
 
 #1way:
-ipcount = JuML.GroupStatsCovariate("ipcount", getgroupstats(ip));
+ipcount = JuML.GroupStatsCovariate("ipcount", getgroupstats(ip; selector = testhoursset));
 appcount = JuML.GroupStatsCovariate("appcount", getgroupstats(app));
 oscount = JuML.GroupStatsCovariate("oscount", getgroupstats(os));
 devicecount = JuML.GroupStatsCovariate("devicecount", getgroupstats(device));

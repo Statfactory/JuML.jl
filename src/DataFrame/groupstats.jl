@@ -1,15 +1,17 @@
 struct GroupStats{N, U, S} 
     keyvars::NTuple{N, StatVariate}
     covariate::Nullable{AbstractCovariate}
+    selector::Nullable{AbstractBoolVariate}
     stats::Dict{NTuple{N, U}, S}
 end
 
-function getgroupstats(factors::NTuple{N, AbstractFactor}; slicelength::Integer = SLICELENGTH) where {N}
+function getgroupstats(factors::NTuple{N, AbstractFactor}; selector::AbstractBoolVariate = BoolVariate("", BitArray{1}()), slicelength::Integer = SLICELENGTH) where {N}
     U = promote_type(map((s -> eltype(s)), factors)...)
     u = zero(U)
     fromobs = 1
     toobs = length(factors[1])
     slicelength = verifyslicelength(fromobs, toobs, slicelength)  
+    noselector = length(selector) == 0
     if N == 1
         slices = slice(factors[1], fromobs, toobs, slicelength)
     elseif N == 2
@@ -21,43 +23,90 @@ function getgroupstats(factors::NTuple{N, AbstractFactor}; slicelength::Integer 
     else
         slices = zip(map((s -> slice(s, fromobs, toobs, slicelength)), factors))
     end
-    dict = fold(Dict{NTuple{N, U}, Int64}(), slices) do d, slice
-        if N == 1
-            @inbounds for i in 1:length(slice)
-                v = (slice[i], )
-                d[v] = get(d, v, 0) + 1
+    if noselector
+        dict = fold(Dict{NTuple{N, U}, Int64}(), slices) do d, slice
+            if N == 1
+                @inbounds for i in 1:length(slice)
+                    v = (slice[i], )
+                    d[v] = get(d, v, 0) + 1
+                end
+            elseif N == 2
+                slice1, slice2 = slice
+                @inbounds for i in 1:length(slice1)
+                    v = oftype(u, slice1[i]), oftype(u, slice2[i])
+                    d[v] = get(d, v, 0) + 1
+                end          
+            elseif N == 3
+                slice1, slice2, slice3 = slice
+                @inbounds for i in 1:length(slice1)
+                    v = oftype(u, slice1[i]), oftype(u, slice2[i]), oftype(u, slice3[i])
+                    d[v] = get(d, v, 0) + 1
+                end
+            elseif N == 4
+                slice1, slice2, slice3, slice4 = slice
+                @inbounds for i in 1:length(slice1)
+                    v = oftype(u, slice1[i]), oftype(u, slice2[i]), oftype(u, slice3[i]), oftype(u, slice4[i])
+                    d[v] = get(d, v, 0) + 1
+                end
+            else
+                for i in 1:length(slice[1])
+                    v = map((x -> oftype(u, x[i])), slice)
+                    d[v] = get(d, v, 0) + 1
+                end
             end
-        elseif N == 2
-            slice1, slice2 = slice
-            @inbounds for i in 1:length(slice1)
-                v = oftype(u, slice1[i]), oftype(u, slice2[i])
-                d[v] = get(d, v, 0) + 1
-            end          
-        elseif N == 3
-            slice1, slice2, slice3 = slice
-            @inbounds for i in 1:length(slice1)
-                v = oftype(u, slice1[i]), oftype(u, slice2[i]), oftype(u, slice3[i])
-                d[v] = get(d, v, 0) + 1
-            end
-        elseif N == 4
-            slice1, slice2, slice3, slice4 = slice
-            @inbounds for i in 1:length(slice1)
-                v = oftype(u, slice1[i]), oftype(u, slice2[i]), oftype(u, slice3[i]), oftype(u, slice4[i])
-                d[v] = get(d, v, 0) + 1
-            end
-        else
-            for i in 1:length(slice[1])
-                v = map((x -> oftype(u, x[i])), slice)
-                d[v] = get(d, v, 0) + 1
-            end
+            d
         end
-        d
+        GroupStats{N, U, Int64}(factors, Nullable(), Nullable(), dict)
+    else
+        selslices = slice(selector, fromobs, toobs, slicelength)
+        zipslices = zip(selslices, slices)
+        dict = fold(Dict{NTuple{N, U}, Int64}(), zipslices) do d, zipslice
+            selslice, slice = zipslice
+            if N == 1
+                @inbounds for i in 1:length(slice)
+                    if selslice[i]
+                        v = (slice[i], )
+                        d[v] = get(d, v, 0) + 1
+                    end
+                end
+            elseif N == 2
+                slice1, slice2 = slice
+                @inbounds for i in 1:length(slice1)
+                    if selslice[i]
+                        v = oftype(u, slice1[i]), oftype(u, slice2[i])
+                        d[v] = get(d, v, 0) + 1
+                    end
+                end          
+            elseif N == 3
+                slice1, slice2, slice3 = slice
+                @inbounds for i in 1:length(slice1)
+                    v = oftype(u, slice1[i]), oftype(u, slice2[i]), oftype(u, slice3[i])
+                    d[v] = get(d, v, 0) + 1
+                end
+            elseif N == 4
+                slice1, slice2, slice3, slice4 = slice
+                @inbounds for i in 1:length(slice1)
+                    if selslice[i]
+                        v = oftype(u, slice1[i]), oftype(u, slice2[i]), oftype(u, slice3[i]), oftype(u, slice4[i])
+                        d[v] = get(d, v, 0) + 1
+                    end
+                end
+            else
+                for i in 1:length(slice[1])
+                    if selslice[i]
+                        v = map((x -> oftype(u, x[i])), slice)
+                        d[v] = get(d, v, 0) + 1
+                    end
+                end
+            end
+            d
+        end
+        GroupStats{N, U, Int64}(factors, Nullable(), Nullable(selector), dict)
     end
-    GroupStats{N, U, Int64}(factors, Nullable(), dict)
 end
 
-function getgroupstats(factors::AbstractFactor...; slicelength::Integer = SLICELENGTH) 
-    getgroupstats(factors; slicelength = slicelength)
+function getgroupstats(factors::AbstractFactor...; selector::AbstractBoolVariate = BoolVariate("", BitArray{1}()), slicelength::Integer = SLICELENGTH) 
+    getgroupstats(factors; selector = selector, slicelength = slicelength)
 end
 
 function getgroupstats(cov::AbstractCovariate{S}, factors::NTuple{N, AbstractFactor}; slicelength::Integer = SLICELENGTH) where {N} where {S<:AbstractFloat}

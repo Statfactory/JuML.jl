@@ -31,35 +31,36 @@ function slice(covariate::GroupStatsCovariate{N, U, S, T}, fromobs::Integer, too
     buffer = Vector{T}(slicelength)
     t = zero(T)
     u = zero(U)
+    s = zero(S)
     map(zipslices, SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}) do zipslice
         n = length(zipslice[1])
         if N == 1
             slice = zipslice[1]
             for i in 1:n
-                buffer[i] = oftype(t, f(dict[(oftype(u, slice[i]), )]))
+                buffer[i] = oftype(t, f(get(dict, (oftype(u, slice[i]), ), s)))
             end
             view(buffer, 1:n)
         elseif N == 2
             slice1, slice2 = zipslice
             for i in 1:n
-                buffer[i] = oftype(t, f(dict[(oftype(u, slice1[i]), oftype(u, slice2[i]))]))
+                buffer[i] = oftype(t, f(get(dict, (oftype(u, slice1[i]), oftype(u, slice2[i])), s)))
             end
             view(buffer, 1:n)
         elseif N == 3
             slice1, slice2, slice3 = zipslice
             for i in 1:n
-                buffer[i] = oftype(t, f(dict[(oftype(u, slice1[i]), oftype(u, slice2[i]), oftype(u, slice3[i]))]))
+                buffer[i] = oftype(t, f(get(dict, (oftype(u, slice1[i]), oftype(u, slice2[i]), oftype(u, slice3[i])), s)))
             end
             view(buffer, 1:n)
         elseif N == 4
             slice1, slice2, slice3, slice4 = zipslice
             for i in 1:n
-                buffer[i] = oftype(t, f(dict[(oftype(u, slice1[i]), oftype(u, slice2[i]), oftype(u, slice3[i]), oftype(u, slice4[i]))]))
+                buffer[i] = oftype(t, f(get(dict, (oftype(u, slice1[i]), oftype(u, slice2[i]), oftype(u, slice3[i]), oftype(u, slice4[i])), s)))
             end
             view(buffer, 1:n)
         else
             for i in 1:n
-                buffer[i] = oftype(t, f(dict[map((x -> oftype(u, x[i])), zipslice)]))
+                buffer[i] = oftype(t, f(get(dict, map((x -> oftype(u, x[i])), zipslice), s)))
             end
             view(buffer, 1:n)
         end
