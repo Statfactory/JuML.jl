@@ -73,21 +73,6 @@ Base.length(boolvar::AbstractBoolVariate) = boolvar.length
 
 Base.length(factor::AbstractFactor{T}) where {T<:Unsigned} = factor.length
 
-
-# function widenfactors(factors::Vector{<:AbstractFactor})
-#     if all(map((factor -> issubtype(typeof(factor), AbstractFactor{UInt8})), factors))
-#         factors
-#     elseif all(map((factor -> issubtype(typeof(factor), AbstractFactor{UInt16})), factors))
-#             factors
-#     elseif all(map((factor -> issubtype(typeof(factor), AbstractFactor{UInt32})), factors))
-#             factors
-#     elseif all(map((factor -> issubtype(typeof(factor), AbstractFactor{UInt8}) || issubtype(typeof(factor), AbstractFactor{UInt16})), factors))
-#         [issubtype(typeof(factor), AbstractFactor{UInt16}) ? factor : WiderFactor{UInt8, UInt16}(factor) for factor in factors]
-#     else
-#         [issubtype(typeof(factor), AbstractFactor{UInt32}) ? factor : (issubtype(typeof(factor), AbstractFactor{UInt16}) ? WiderFactor{UInt16, UInt32}(factor) : WiderFactor{UInt8, UInt32}(factor)) for factor in factors]
-#     end
-# end
-
 function DataFrame(path::String; preload::Bool = true)
     path = abspath(path)
     headerpath = isfile(path) ? path : joinpath(path, "header.txt")
@@ -179,9 +164,9 @@ function Base.getindex(df::AbstractDataFrame, name::String)
     end
 end
 
-function Base.summary(factor::AbstractFactor{T}) where {T<:Unsigned}
+function Base.summary(factor::AbstractFactor{T}; selector::AbstractBoolVariate = BoolVariate("", BitArray{1}())) where {T<:Unsigned}
     io = IOBuffer()
-    factorstats = getstats(factor)
+    factorstats = getstats(factor; selector = selector)
     println(io, @sprintf("%-16s%15d", "Obs Count", factorstats.obscount))
     println(io, @sprintf("%-16s%15s%15s", "Level", "Frequency", "Frequency(%)"))
     println(io, @sprintf("%-16s%15d%15G", MISSINGLEVEL, factorstats.missingfreq, factorstats.missingpcnt))
@@ -210,21 +195,40 @@ function Base.summary(boolvar::AbstractBoolVariate)
     print(String(take!(io)))
 end
 
-function getstats(factor::AbstractFactor{T}) where {T<:Unsigned}
+function getstats(factor::AbstractFactor{T}; selector::AbstractBoolVariate = BoolVariate("", BitArray{1}())) where {T<:Unsigned}
     len = length(factor)
     levels = getlevels(factor)
     levelcount = length(levels)
-    init = zeros(Int64, levelcount + 1)
     slices = slice(factor, 1, len, SLICELENGTH)
-    freq = fold(init, slices) do frq, slice
-        for levelindex in slice
-            frq[levelindex + 1] += 1 
+    noselector = length(selector) == 0
+    if noselector
+        init = zeros(Int64, levelcount + 1)
+        freq = fold(init, slices) do frq, slice
+            for levelindex in slice
+                frq[levelindex + 1] += 1 
+            end
+            frq
         end
-        frq
+    else
+        selslices = slice(selector, 1, len, SLICELENGTH)
+        zipslices = zip(selslices, slices)
+        stats0 = zeros(Int64, levelcount + 1)
+        freq, selcount = fold((stats0, 0), zipslices) do acc, zipslice
+            frq, k = acc
+            selslice, slice = zipslice
+            for i in 1:length(slice)
+                if selslice[i]
+                    k += 1
+                    levelindex = slice[i]
+                    frq[levelindex + 1] += 1 
+                end
+            end
+            frq, k
+        end
     end
     missingfreq = freq[1]
-    missingpcnt = 100.0 * missingfreq / len
-    levelstats = [LevelStats(levels[i], freq[i + 1], 100.0 * freq[i + 1] / len) for i in 1:levelcount]  
+    missingpcnt = 100.0 * missingfreq / (noselector ? len : selcount)
+    levelstats = [LevelStats(levels[i], freq[i + 1], 100.0 * freq[i + 1] / (noselector ? len : selcount)) for i in 1:levelcount]  
     FactorStats(len, missingfreq, missingpcnt, levelstats)
 end
 

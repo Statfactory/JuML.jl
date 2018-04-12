@@ -20,7 +20,7 @@ using JuML
 
 #train_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\train_sample", preload = false)
 test_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test", preload = false)
-traintest_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\traintest", preload = false)
+traintest_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\traintest", preload = false)
 
 factors = traintest_df.factors
 label = traintest_df["is_attributed"] 
@@ -79,10 +79,11 @@ clickhour = factor(JuML.TransDateTimeCovariate("ClickHour", click_time, dt -> 24
 #r = Vector{Float32}()
 # testset = r .> 0.9
 
-cutoff = DateTime(2017, 11, 9, 11, 0, 0)
-trainset = JuML.TransDateTimeBoolVariate("", click_time, t -> t <= cutoff) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x)) 
-validset = JuML.TransDateTimeBoolVariate("", click_time, t -> t > cutoff) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x)) 
-#summary(trainset)
+#cutoff = DateTime(2017, 11, 9, 11, 0, 0)
+testhours = Set{Int}([4, 5, 9, 10, 13, 14])
+trainset = JuML.TransDateTimeBoolVariate("", click_time, t -> Dates.day(t) <= 8 && Dates.hour(t) in testhours) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x)) 
+validset = JuML.TransDateTimeBoolVariate("", click_time, t -> Dates.day(t) == 9 && Dates.hour(t) in testhours) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x)) 
+summary(validset)
 
 # testip = test_df["ip"]
 # testos = test_df["os"]
