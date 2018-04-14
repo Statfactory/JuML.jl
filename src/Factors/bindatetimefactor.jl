@@ -10,7 +10,7 @@ Base.length(var::BinDateTimeFactor{T}) where {T<:Unsigned} = length(var.datetime
 function BinDateTimeFactor(name::String, bins::AbstractVector{Int64}, dtvariate::AbstractDateTimeVariate)
     bins = issorted(bins) ? bins : sort(bins)
     levelcount = length(bins) - 1
-    levels = [@sprintf("[%G,%G%s", Dates.epochms2datetime(bins[i]), Dates.epochms2datetime(bins[i + 1]), i == levelcount ? "]" : ")") for i in 1:levelcount]
+    levels = [@sprintf("[%s,%s%s", string(Dates.epochms2datetime(bins[i])), string(Dates.epochms2datetime(bins[i + 1])), i == levelcount ? "]" : ")") for i in 1:levelcount]
     if levelcount <= typemax(UInt8)
         BinDateTimeFactor{UInt8}(name, levels, bins, dtvariate)
     elseif levelcount <= typemax(UInt16)
@@ -21,6 +21,23 @@ function BinDateTimeFactor(name::String, bins::AbstractVector{Int64}, dtvariate:
 end
 
 function factor(dtvariate::AbstractDateTimeVariate, bins::AbstractVector{Int64}) 
+    BinDateTimeFactor(getname(dtvariate), bins, dtvariate)
+end
+
+function factor(dtvariate::AbstractDateTimeVariate) 
+    fromobs = 1
+    toobs = length(dtvariate)
+    slicelength = verifyslicelength(fromobs, toobs, SLICELENGTH)
+    slices = slice(dtvariate, fromobs, toobs, slicelength)
+    vset = fold(Set{Int64}(), slices) do acc, slice
+        for i in 1:length(slice)
+            v = slice[i]
+            push!(acc, v)
+        end
+        acc
+    end
+    bins = collect(vset)
+    sort!(bins)
     BinDateTimeFactor(getname(dtvariate), bins, dtvariate)
 end
 
@@ -41,7 +58,7 @@ function slice(factor::BinDateTimeFactor{T}, fromobs::Integer, toobs::Integer, s
             end
         )
     slicelength = verifyslicelength(fromobs, toobs, slicelength) 
-    slices = slice(factor.covariate, fromobs, toobs, slicelength)
+    slices = slice(factor.datetimevariate, fromobs, toobs, slicelength)
     mapslice(f, slices, slicelength, T)
 end
 

@@ -274,7 +274,7 @@ function getstats(factor::AbstractFactor{T}, covariate::AbstractCovariate{S}) wh
     missinit = CovariateStats(0, 0, NaN64, NaN64, NaN64, NaN64, NaN64, NaN64, NaN64)
     covslices = slice(covariate, 1, len, SLICELENGTH)
     factorslices = slice(factor, 1, len, SLICELENGTH)
-    zipslices = zip2(factorslices, covslices)
+    zipslices = zip(factorslices, covslices)
     missacc, levelacc = fold((missinit, levelsinit), zipslices) do acc, slice
         missstat, levelsstat = acc
         fslice, cslice = slice
@@ -444,14 +444,56 @@ function Base.show(io::IO, factor::AbstractFactor{T}) where {T<:Unsigned}
     end
 end
 
-function Base.convert(::Type{Vector{T}}, covariate::AbstractCovariate{T}) where {T<:AbstractFloat}
-    v, _ = tryread(slice(covariate, 1, length(covariate), length(covariate)))
-    get(v)
+function Base.convert(::Type{Vector{T}}, factor::AbstractFactor{T}) where {T<:Unsigned}
+    slices = slice(factor, 1, length(factor), SLICELENGTH)
+    data = Vector{T}(length(factor))
+    fold(0, slices) do offset, slice
+        n = length(slice)
+        @inbounds for i in 1:n
+            data[i + offset] = slice[i]
+        end
+        offset += n
+    end
+    data
 end
 
-function Base.convert(::Type{BitArray}, boolvariate::AbstractBoolVariate) 
-    v, _ = tryread(slice(boolvariate, 1, length(boolvariate), length(boolvariate)))
-    get(v)
+function Base.convert(::Type{Vector{T}}, covariate::AbstractCovariate{T}) where {T<:AbstractFloat}
+    slices = slice(covariate, 1, length(covariate), SLICELENGTH)
+    data = Vector{T}(length(covariate))
+    fold(0, slices) do offset, slice
+        n = length(slice)
+        @inbounds for i in 1:n
+            data[i + offset] = slice[i]
+        end
+        offset += n
+    end
+    data
+end
+
+function Base.convert(::Type{Vector{Int64}}, datetimevariate::AbstractDateTimeVariate) 
+    slices = slice(datetimevariate, 1, length(datetimevariate), SLICELENGTH)
+    data = Vector{Int64}(length(datetimevariate))
+    fold(0, slices) do offset, slice
+        n = length(slice)
+        @inbounds for i in 1:n
+            data[i + offset] = slice[i]
+        end
+        offset += n
+    end
+    data
+end
+
+function Base.convert(::Type{BitArray{1}}, boolvariate::AbstractBoolVariate) 
+    slices = slice(boolvariate, 1, length(boolvariate), SLICELENGTH)
+    data = BitArray{1}(length(boolvariate))
+    fold(0, slices) do offset, slice
+        n = length(slice)
+        @inbounds for i in 1:n
+            data[i + offset] = slice[i]
+        end
+        offset += n
+    end
+    data
 end
 
 function isordinal(factor::AbstractFactor{T}) where {T<:Unsigned}
