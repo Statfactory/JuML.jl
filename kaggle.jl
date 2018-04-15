@@ -22,41 +22,15 @@ train_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\train", pr
 test_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test", preload = false)
 traintest_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\traintest", preload = false)
 
-click_time = factor(train_df["click_time"]) |> cache
-summary(click_time)
-app = train_df["app"]
-ip = train_df["ip"]
-summary(app)
-app3 = covariate(app, level -> level == "3" ? one(Float32) : zero(Float32)) |> cache
-app64 = covariate(app, level -> level == "64" ? one(Float32) : zero(Float32)) |> cache
-summary(app3)
-gstats = getgroupstats(app3, click_time)
-
-gstats64 = getgroupstats(app64, click_time)
-
-xx = [v.mean for (k, v) in gstats64.stats]
-mean(xx)
-yy = filter((x -> 0.03 <= x), xx)
-
-gstats = getgroupstats(ip, click_time)
-xx = [v for (k, v) in gstats.stats]
-yy = filter((x -> x > 1), xx)
-
-clickipcount = factor(JuML.GroupStatsCovariate("clickipcount", gstats));
-
-
-
-
-
 factors = traintest_df.factors
 label = traintest_df["is_attributed"] 
 click_time = traintest_df["click_time"]
 summary(click_time)
 
 #clickday = factor(JuML.TransDateTimeCovariate("ClickDay", click_time, Dates.day)); 
-clickhour24 = factor(JuML.TransDateTimeCovariate("ClickHour24", click_time, Dates.hour))
+#clickhour24 = factor(JuML.TransDateTimeCovariate("ClickHour24", click_time, Dates.hour))
 #nmin = 15
-#clickhour = factor(JuML.TransDateTimeCovariate("ClickHour", click_time, dt -> 24 * Dates.dayofweek(dt) + Dates.hour(dt))) |> cache
+clickhour = factor(JuML.TransDateTimeCovariate("ClickHour", click_time, dt -> 24 * Dates.dayofweek(dt) + Dates.hour(dt))) |> cache
 #clickminute = factor(JuML.TransDateTimeCovariate("ClickDay", click_time, dt -> 24 * 60 * Dates.dayofweek(dt) + 60 * Dates.hour(dt) + Dates.minute(dt)), 2312:6721)
 summary(clickhour)
 
@@ -99,17 +73,17 @@ summary(clickhour)
 # app = prepfactor("app", train_df, test_df)
 
 
-#r = rand(Float32, length(label))
-#trainset = BoolVariate("", r .<= 0.9) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x)) 
-#validset = BoolVariate("", r .> 0.9) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x)) 
-#r = Vector{Float32}()
+r = rand(Float32, length(label))
+trainset = BoolVariate("", r .<= 0.95) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x)) 
+validset = BoolVariate("", r .> 0.95) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x)) 
+r = Vector{Float32}()
 # testset = r .> 0.9
 
 #cutoff = DateTime(2017, 11, 9, 11, 0, 0)
 #testhours = Set{Int}([4, 5, 9, 10, 13, 14])
 #testhoursset = JuML.TransDateTimeBoolVariate("", click_time, t -> Dates.hour(t) in testhours) |> cache
-trainset = JuML.TransDateTimeBoolVariate("", click_time, t -> Dates.day(t) >= 8 || Dates.hour(t) > 3) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x)) |> cache
-validset = JuML.TransDateTimeBoolVariate("", click_time, t -> Dates.day(t) == 7 && Dates.hour(t) <= 3) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x)) 
+#trainset = JuML.TransDateTimeBoolVariate("", click_time, t -> Dates.day(t) >= 8 || Dates.hour(t) > 3) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x)) |> cache
+#validset = JuML.TransDateTimeBoolVariate("", click_time, t -> Dates.day(t) == 7 && Dates.hour(t) <= 3) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x)) 
 summary(trainset)
 
 # testip = test_df["ip"]
@@ -134,7 +108,7 @@ device = traintest_df["device"]
 #hourcount = JuML.GroupStatsCovariate("hourcount", getgroupstats(clickhour24)) |> cache
 #ipdevicehourpcnt = JuML.GroupStatsCovariate("iphourpcnt", getgroupstats(app, clickhour24)) ./ hourcount
 
-hourcount = JuML.GroupStatsCovariate("hourcount", getgroupstats(clickhour24));
+hourcount = JuML.GroupStatsCovariate("hourcount", getgroupstats(clickhour));
 
 #1way:
 ipcount = JuML.GroupStatsCovariate("ipcount", getgroupstats(ip));
@@ -241,7 +215,7 @@ twowayfactors = map((cov -> JuML.factor(cov)), [ipappcount, ipdevicecount, ipcha
 
 #threewayfactors = map((cov -> JuML.factor(cov)), [deviceoschannelcount, apposchannelcount, deviceappchannelcount, deviceapposcount, iposchannelcount, ipdevicechannelcount, iposdevicecount, ipappchannelcount, ipapposcount, ipappdevicecount])
 
-@time model = xgblogit(label, [ip, os, app, channel, device]; trainselector = trainset, validselector = validset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = 100.0, minchildweight = 1.0, nrounds = 15, maxdepth = 10, ordstumps = true, pruning = false, leafwise = false, maxleaves = 256, caching = true, usefloat64 = false, singlethread = true, slicelength = 1000000);
+@time model = xgblogit(label, [onewayfactors; [ip, device, channel, os, app]]; trainselector = trainset, validselector = validset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = 100.0, minchildweight = 1.0, nrounds = 40, maxdepth = 10, ordstumps = true, pruning = false, leafwise = false, maxleaves = 256, caching = true, usefloat64 = false, singlethread = true, slicelength = 1000000);
 
 #@time trainauc = getauc(model.pred, label; selector = trainset) 
 #@time testauc = getauc(model.pred, label; selector = testset)
@@ -249,7 +223,7 @@ twowayfactors = map((cov -> JuML.factor(cov)), [ipappcount, ipdevicecount, ipcha
 #mean(model.pred)           
 #@time pred = predict(model, test_df)     
 #mean(pred)
-testlen = length(test_df["click_id"])
+ testlen = length(test_df["click_id"])
 is_attr = Covariate("is_attributed", model.pred[(length(model.pred) - testlen + 1):length(model.pred)])
 click_id = test_df["click_id"]
 sub_df = DataFrame(testlen, [click_id], [is_attr], JuML.AbstractBoolVariate[], JuML.AbstractDateTimeVariate[])
