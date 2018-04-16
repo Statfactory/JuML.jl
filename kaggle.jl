@@ -20,12 +20,13 @@ using JuML
 
 @time importcsv("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\train.csv"; path2 = "C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\testsup.csv",
                  isnumeric = (colname, levelfreq) -> colname in ["is_attributed"],
+                 isinteger = (colname, levelfreq) -> colname in ["ip", "click_id"],
                  isdatetime = (colname, levelfreq) -> colname in ["click_time", "attributed_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
 
 train_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\train", preload = false)
 test_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test", preload = false)
-traintest_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\traintest", preload = false)
+traintest_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\traintestsup", preload = false)
 
 factors = traintest_df.factors
 label = traintest_df["is_attributed"] 
@@ -78,18 +79,25 @@ summary(clickhour)
 # app = prepfactor("app", train_df, test_df)
 
 
-r = rand(Float32, length(label))
-trainset = BoolVariate("", r .<= 0.95) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x)) 
-validset = BoolVariate("", r .> 0.95) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x)) 
-r = Vector{Float32}()
+#r = rand(Float32, length(label))
+#trainset = BoolVariate("", r .<= 0.95) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x)) 
+#validset = BoolVariate("", r .> 0.95) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x)) 
+#r = Vector{Float32}()
 # testset = r .> 0.9
 
-#cutoff = DateTime(2017, 11, 9, 11, 0, 0)
-#testhours = Set{Int}([4, 5, 9, 10, 13, 14])
-#testhoursset = JuML.TransDateTimeBoolVariate("", click_time, t -> Dates.hour(t) in testhours) |> cache
-#trainset = JuML.TransDateTimeBoolVariate("", click_time, t -> Dates.day(t) >= 8 || Dates.hour(t) > 3) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x)) |> cache
-#validset = JuML.TransDateTimeBoolVariate("", click_time, t -> Dates.day(t) == 7 && Dates.hour(t) <= 3) .& JuML.TransCovBoolVariate("", label, x -> !isnan(x)) 
+day1 = DateTime(2017, 11, 7, 4, 0, 0), DateTime(2017, 11, 7, 15, 0, 0)
+day2 = DateTime(2017, 11, 8, 4, 0, 0), DateTime(2017, 11, 8, 15, 0, 0)
+day3 = DateTime(2017, 11, 9, 4, 0, 0), DateTime(2017, 11, 9, 15, 0, 0)
+day4 = DateTime(2017, 11, 10, 4, 0, 0), DateTime(2017, 11, 10, 15, 0, 0)
+
+trainset = JuML.TransDateTimeBoolVariate("", click_time, t -> day1[1] <= t <= day1[2] || day2[1] <= t <= day2[2]) 
+validset = JuML.TransDateTimeBoolVariate("", click_time, t -> day3[1] <= t <= day3[2]) 
+testset = JuML.TransDateTimeBoolVariate("", click_time, t -> day4[1] <= t <= day4[2]) 
+allset = JuML.TransDateTimeBoolVariate("", click_time, t -> day1[1] <= t <= day1[2] || day2[1] <= t <= day2[2] || day3[1] <= t <= day3[2] || day4[1] <= t <= day4[2]) |> cache 
 summary(trainset)
+summary(validset)
+summary(testset)
+summary(allset)
 
 # testip = test_df["ip"]
 # testos = test_df["os"]
@@ -113,14 +121,15 @@ device = traintest_df["device"]
 #hourcount = JuML.GroupStatsCovariate("hourcount", getgroupstats(clickhour24)) |> cache
 #ipdevicehourpcnt = JuML.GroupStatsCovariate("iphourpcnt", getgroupstats(app, clickhour24)) ./ hourcount
 
+
 hourcount = JuML.GroupStatsCovariate("hourcount", getgroupstats(clickhour));
 
 #1way:
-ipcount = JuML.GroupStatsCovariate("ipcount", getgroupstats(ip));
-appcount = JuML.GroupStatsCovariate("appcount", getgroupstats(app));
-oscount = JuML.GroupStatsCovariate("oscount", getgroupstats(os));
-devicecount = JuML.GroupStatsCovariate("devicecount", getgroupstats(device));
-channelcount = JuML.GroupStatsCovariate("channelcount", getgroupstats(channel));
+ipcount = JuML.GroupStatsCovariate("ipcount", getgroupstats(ip; selector = allset));
+appcount = JuML.GroupStatsCovariate("appcount", getgroupstats(app; selector = allset));
+oscount = JuML.GroupStatsCovariate("oscount", getgroupstats(os; selector = allset));
+devicecount = JuML.GroupStatsCovariate("devicecount", getgroupstats(device; selector = allset));
+channelcount = JuML.GroupStatsCovariate("channelcount", getgroupstats(channel; selector = allset));
 
 #1way/hour:
 iphourcount = JuML.GroupStatsCovariate("iphourcount", getgroupstats(ip, clickhour24));

@@ -1,6 +1,6 @@
 struct Covariate{T<:AbstractFloat} <: AbstractCovariate{T}
     name::String
-    data::AbstractVector{T}
+    data::Vector{T}
 end
 
 Base.length(covariate::Covariate{T}) where {T<:AbstractFloat} = length(covariate.data)

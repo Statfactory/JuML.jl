@@ -14,6 +14,7 @@ mutable struct CatImporter <: ColumnImporter
     isdropped::Bool
     isnumeric::Function
     isdatetime::Function
+    isinteger::Function
     nas::Set{String}
     bitwidth::Int64
 end
@@ -28,6 +29,14 @@ mutable struct NumImporter <: ColumnImporter
     nas::Set{String}
 end
 
+mutable struct IntImporter <: ColumnImporter
+    colname::AbstractString
+    colindex::Int64
+    filepath::String
+    length::Int64
+    nas::Set{String}
+end
+
 mutable struct DateTimeImporter <: ColumnImporter
     colname::AbstractString
     colindex::Int64
@@ -37,9 +46,9 @@ mutable struct DateTimeImporter <: ColumnImporter
     nas::Set{String}
 end
 
-function CatImporter(colname::AbstractString, colindex::Int64, filepath::String, len::Int64, isnumeric::Function, isdatetime::Function,
+function CatImporter(colname::AbstractString, colindex::Int64, filepath::String, len::Int64, isnumeric::Function, isdatetime::Function, isinteger::Function,
                      nas::Set{String}, isdropped)
-    CatImporter(colname, colindex, filepath, len, Dict{SubString{String}, Int64}(MISSINGLEVEL => 0), Dict{Int64, SubString{String}}(0 => MISSINGLEVEL), Dict{SubString{String}, Int64}(), isdropped, isnumeric, isdatetime, nas, 8)
+    CatImporter(colname, colindex, filepath, len, Dict{SubString{String}, Int64}(MISSINGLEVEL => 0), Dict{Int64, SubString{String}}(0 => MISSINGLEVEL), Dict{SubString{String}, Int64}(), isdropped, isnumeric, isdatetime, isinteger, nas, 8)
 end
 
 struct DataColumnInfo
@@ -64,6 +73,10 @@ end
 
 function DataColumnInfo(numimporter::NumImporter)
     DataColumnInfo(numimporter.colname, numimporter.length, basename(numimporter.filepath), "Float32", Vector{String}())
+end
+
+function DataColumnInfo(intimporter::IntImporter)
+    DataColumnInfo(intimporter.colname, intimporter.length, basename(intimporter.filepath), "Int32", Vector{String}())
 end
 
 function DataColumnInfo(dtimporter::DateTimeImporter)
@@ -94,6 +107,24 @@ function tonumcolumn(::Type{T}, levelindexmap::Dict{Int64, SubString{String}}, f
                 v = tryparse(Float32, level)
                 if isnull(v)
                     write(tofile, NaN32)
+                else
+                    write(tofile, get(v))
+                end              
+            end
+        end
+    end
+end
+
+function tointcolumn(::Type{T}, levelindexmap::Dict{Int64, SubString{String}}, frompath::String, topath::String, length::Int64) where {T<:Unsigned}
+    data = Vector{T}(length)
+    open(frompath) do fromfile
+        open(topath, "a") do tofile
+            read!(fromfile, data)
+            for i in 1:length
+                level = levelindexmap[data[i]]
+                v = tryparse(Int32, level)
+                if isnull(v)
+                    write(tofile, typemin(Int32))
                 else
                     write(tofile, get(v))
                 end              
@@ -134,6 +165,28 @@ function importlevels(colimporter::NumImporter, datalines::Vector{Vector{SubStri
             v = tryparse(Float32, level)
             if isnull(v)
                 write(iostream, NaN32)
+            else
+                write(iostream, get(v))
+            end
+       end
+        collength += 1
+    end
+    close(iostream)
+    colimporter.length = collength
+    colimporter
+end
+
+function importlevels(colimporter::IntImporter, datalines::Vector{Vector{SubString{String}}})
+    iostream = open(colimporter.filepath, "a")
+    collength = colimporter.length
+    nas = colimporter.nas
+    colindex = colimporter.colindex
+    for line in datalines
+        level = colindex == 0 ? "" : strip(strip(line[colindex]), ['"'])
+        level in nas ? write(iostream, typemin(Int32)) : begin
+            v = tryparse(Int32, level)
+            if isnull(v)
+                write(iostream, typemin(Int32))
             else
                 write(iostream, get(v))
             end
@@ -236,6 +289,15 @@ function importlevels(colimporter::CatImporter, datalines::Vector{Vector{SubStri
             end
             rm(colimporter.filepath)
             colimporter = NumImporter(colimporter.colname, colimporter.colindex, newpath, collength, 0, 0, nas)
+        elseif !colimporter.isdropped && colimporter.isinteger(colimporter.colname, levelfreq)
+                newpath = joinpath(dirname(colimporter.filepath), "$(randstring(10)).dat")
+                if length(colimporter.levelmap) > typemax(UInt8) + 1
+                    tointcolumn(UInt16, levelindexmap, colimporter.filepath, newpath, collength)
+                else
+                    tointcolumn(UInt8, levelindexmap, colimporter.filepath, newpath, collength)
+                end
+                rm(colimporter.filepath)
+                colimporter = IntImporter(colimporter.colname, colimporter.colindex, newpath, collength, nas)
         else
             isdt, dtformatstr = colimporter.isdatetime(colimporter.colname, levelfreq)
             dtformat = Dates.DateFormat(dtformatstr)
@@ -270,8 +332,12 @@ function isnotdatetime(colname::AbstractString, levelfreq::Dict{SubString{String
     false, ""
 end
 
+function isnotinteger(colname::AbstractString, levelfreq::Dict{SubString{String}, Int64})
+    false
+end
+
 function importcsv(path::String; path2::String = "", outname::String = "", maxobs::Integer = -1, chunksize::Integer = SLICELENGTH, nas::Vector{String} = Vector{String}(),
-                   isnumeric::Function = isanylevelnumeric, isdatetime::Function = isnotdatetime,
+                   isnumeric::Function = isanylevelnumeric, isdatetime::Function = isnotdatetime, isinteger::Function = isnotinteger,
                    drop::Vector{String} = Vector{String}())
     nas = Set{String}(nas)
     push!(nas, "")
@@ -285,7 +351,7 @@ function importcsv(path::String; path2::String = "", outname::String = "", maxob
     colnames, datalines = lines |> tryread
     if !isnull(colnames)
         colnames = map((c -> strip(strip(c), ['"'])), get(colnames))
-        colimporters::Vector{ColumnImporter} = map((x -> CatImporter(x[2], x[1], joinpath(outtempfolder, "$(randstring(10)).dat"), 0, isnumeric, isdatetime, nas, x[2] in drop)), enumerate(colnames))
+        colimporters::Vector{ColumnImporter} = map((x -> CatImporter(x[2], x[1], joinpath(outtempfolder, "$(randstring(10)).dat"), 0, isnumeric, isdatetime, isinteger, nas, x[2] in drop)), enumerate(colnames))
         colimporters = fold(importdata, colimporters, chunkbysize(datalines, chunksize))
     end
     if path2 != ""
@@ -312,6 +378,14 @@ function importcsv(path::String; path2::String = "", outname::String = "", maxob
                             end
                         end
                         NumImporter(colname, colindex, newpath, currlen, 0, 0, nas)
+                    elseif isinteger(colname, Dict{SubString{String}, Int64}())
+                            newpath = joinpath(outtempfolder, "$(randstring(10)).dat")
+                            open(newpath, "a") do tofile
+                                for i in 1:currlen
+                                    write(tofile, typemin(Int32))
+                                end
+                            end
+                            IntImporter(colname, colindex, newpath, currlen, nas)
                     else
                         newpath = joinpath(outtempfolder, "$(randstring(10)).dat")
                         open(newpath, "a") do tofile
@@ -335,7 +409,7 @@ function importcsv(path::String; path2::String = "", outname::String = "", maxob
     end
 
     colimporters = filter(colimporters) do colimp
-        isa(colimp, NumImporter) || isa(colimp, DateTimeImporter) || !colimp.isdropped
+        isa(colimp, NumImporter) || isa(colimp, IntImporter) || isa(colimp, DateTimeImporter) || !colimp.isdropped
     end
     header = DataHeader([DataColumnInfo(colimp) for colimp in colimporters])
     headerjson = JSON.json(header)

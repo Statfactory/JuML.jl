@@ -5,7 +5,7 @@ struct GroupStats{N, U, S}
     stats::Dict{NTuple{N, U}, S}
 end
 
-function getgroupstats(factors::NTuple{N, AbstractFactor}; selector::AbstractBoolVariate = BoolVariate("", BitArray{1}()), slicelength::Integer = SLICELENGTH) where {N}
+function getgroupstats(factors::NTuple{N, Union{AbstractFactor, AbstractIntVariate}}; selector::AbstractBoolVariate = BoolVariate("", BitArray{1}()), slicelength::Integer = SLICELENGTH) where {N}
     U = promote_type(map((s -> eltype(s)), factors)...)
     u = zero(U)
     fromobs = 1
@@ -105,7 +105,7 @@ function getgroupstats(factors::NTuple{N, AbstractFactor}; selector::AbstractBoo
     end
 end
 
-function getgroupstats(factors::AbstractFactor...; selector::AbstractBoolVariate = BoolVariate("", BitArray{1}()), slicelength::Integer = SLICELENGTH) 
+function getgroupstats(factors::Union{AbstractFactor, AbstractIntVariate}...; selector::AbstractBoolVariate = BoolVariate("", BitArray{1}()), slicelength::Integer = SLICELENGTH) 
     getgroupstats(factors; selector = selector, slicelength = slicelength)
 end
 

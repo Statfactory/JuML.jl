@@ -47,6 +47,9 @@ include("Factors/permutefactor.jl")
 include("Factors/widerfactor.jl")
 include("Factors/bindatetimefactor.jl")
 
+include("IntVariates/intvariate.jl")
+include("IntVariates/fileintvariate.jl")
+
 include("Covariates/covariate.jl")
 include("Covariates/constcovariate.jl")
 include("Covariates/filecovariate.jl")

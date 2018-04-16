@@ -12,12 +12,15 @@ abstract type AbstractBoolVariate <: StatVariate end
 
 abstract type AbstractDateTimeVariate <: StatVariate end
 
+abstract type AbstractIntVariate{T<:Signed} <: StatVariate end
+
 struct DataFrame <: AbstractDataFrame
     length::Int64
     factors::AbstractVector{<:AbstractFactor}
     covariates::AbstractVector{<:AbstractCovariate}
     boolvariates::AbstractVector{<:AbstractBoolVariate}
     datetimevariates::AbstractVector{<:AbstractDateTimeVariate}
+    intvariates::AbstractVector{<:AbstractIntVariate}
 end
 
 mutable struct CovariateStats
@@ -63,11 +66,15 @@ getname(factor::AbstractFactor{T}) where {T<:Unsigned} = factor.name
 
 getname(covariate::AbstractCovariate{T}) where {T<:AbstractFloat} = covariate.name
 
+getname(intvariate::AbstractIntVariate{T}) where {T<:Signed} = intvariate.name
+
 getname(boolvar::AbstractBoolVariate) = boolvar.name
 
 getname(datetimevar::AbstractDateTimeVariate) = datetimevar.name
 
 Base.length(covariate::AbstractCovariate{T}) where {T<:AbstractFloat} = covariate.length
+
+Base.length(intvariate::AbstractIntVariate{T}) where {T<:Signed} = intvariate.length
 
 Base.length(boolvar::AbstractBoolVariate) = boolvar.length
 
@@ -83,6 +90,7 @@ function DataFrame(path::String; preload::Bool = true)
     factors = Vector{AbstractFactor}()
     covariates = Vector{AbstractCovariate}()
     dtvariates = Vector{AbstractDateTimeVariate}()
+    intvariates = Vector{AbstractIntVariate}()
     datacols = header["datacolumns"]
     len = 0
     for datacol in datacols
@@ -104,6 +112,14 @@ function DataFrame(path::String; preload::Bool = true)
                 push!(dtvariates, DateTimeVariate(name, len, datpath))
             else
                 push!(dtvariates, FileDateTimeVariate(name, len, datpath))
+            end
+        end
+
+        if datatype == "Int32"
+            if preload
+                push!(intvariates, IntVariate{Int32}(name, len, datpath))
+            else
+                push!(intvariates, FileIntVariate{Int32}(name, len, datpath))
             end
         end
 
@@ -143,7 +159,7 @@ function DataFrame(path::String; preload::Bool = true)
             end       
         end
     end
-    DataFrame(len, factors, covariates, AbstractBoolVariate[], dtvariates)
+    DataFrame(len, factors, covariates, AbstractBoolVariate[], dtvariates, intvariates)
 end
 
 function Base.getindex(df::AbstractDataFrame, name::String)
@@ -160,6 +176,12 @@ function Base.getindex(df::AbstractDataFrame, name::String)
     for dt in df.datetimevariates
         if getname(dt) == name
             return dt
+        end
+    end
+
+    for ivar in df.intvariates
+        if getname(ivar) == name
+            return ivar
         end
     end
 end
@@ -403,6 +425,19 @@ function Base.show(io::IO, covariate::AbstractCovariate{T}) where {T<:AbstractFl
     end
 end
 
+function Base.show(io::IO, intvariate::AbstractIntVariate{T}) where {T<:Signed}
+    slices = slice(intvariate, 1, HEADLENGTH, HEADLENGTH)
+    slice1, _ = tryread(slices)
+    len = length(intvariate)
+    if !isnull(slice1)
+        datahead = join([v == typemin(T) ? "." : string(v) for v in get(slice1)], " ")
+        dataend = len > HEADLENGTH ? "  ..." : ""
+        println(io, "IntVariate $(getname(intvariate)) with $(len) obs: $(datahead)$dataend")
+    else
+        println(io, "IntVariate $(getname(intvariate)) with $(len) obs")
+    end
+end
+
 function Base.show(io::IO, boolvar::AbstractBoolVariate) 
     slices = slice(boolvar, 1, HEADLENGTH, HEADLENGTH)
     slice1, _ = tryread(slices)
@@ -562,6 +597,10 @@ end
 
 function Base.eltype(x::AbstractDateTimeVariate) 
     Int64
+end
+
+function Base.eltype(x::AbstractIntVariate{T}) where {T<:Signed}
+    T
 end
 
 
