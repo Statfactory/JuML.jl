@@ -282,7 +282,9 @@ function importlevels(colimporter::CatImporter, datalines::Vector{Vector{SubStri
         close(iostream)
         if !colimporter.isdropped && colimporter.isnumeric(colimporter.colname, levelfreq)
             newpath = joinpath(dirname(colimporter.filepath), "$(randstring(10)).dat")
-            if length(colimporter.levelmap) > typemax(UInt8) + 1
+            if length(colimporter.levelmap) > typemax(UInt16) + 1
+                tonumcolumn(UInt32, levelindexmap, colimporter.filepath, newpath, collength)
+            elseif length(colimporter.levelmap) > typemax(UInt8) + 1
                 tonumcolumn(UInt16, levelindexmap, colimporter.filepath, newpath, collength)
             else
                 tonumcolumn(UInt8, levelindexmap, colimporter.filepath, newpath, collength)
@@ -291,7 +293,9 @@ function importlevels(colimporter::CatImporter, datalines::Vector{Vector{SubStri
             colimporter = NumImporter(colimporter.colname, colimporter.colindex, newpath, collength, 0, 0, nas)
         elseif !colimporter.isdropped && colimporter.isinteger(colimporter.colname, levelfreq)
                 newpath = joinpath(dirname(colimporter.filepath), "$(randstring(10)).dat")
-                if length(colimporter.levelmap) > typemax(UInt8) + 1
+                if length(colimporter.levelmap) > typemax(UInt16) + 1
+                    tointcolumn(UInt32, levelindexmap, colimporter.filepath, newpath, collength)
+                elseif length(colimporter.levelmap) > typemax(UInt8) + 1
                     tointcolumn(UInt16, levelindexmap, colimporter.filepath, newpath, collength)
                 else
                     tointcolumn(UInt8, levelindexmap, colimporter.filepath, newpath, collength)

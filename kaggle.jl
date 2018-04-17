@@ -24,13 +24,7 @@ using JuML
                  isinteger = (colname, levelfreq) -> colname in ["ip", "click_id"],
                  isdatetime = (colname, levelfreq) -> colname in ["click_time", "attributed_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
-@time importcsv("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\testsup.csv";
-                 isnumeric = (colname, levelfreq) -> colname in ["is_attributed"],
-                 isinteger = (colname, levelfreq) -> colname in ["ip", "click_id"],
-                 isdatetime = (colname, levelfreq) -> colname in ["click_time"] ? (true, "y-m-d H:M:S") : (false, ""))
-
 train_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\train", preload = false)
-testsup_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\testsup", preload = false)
 test_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test", preload = false)
 traintest_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\traintestsup", preload = false)
 

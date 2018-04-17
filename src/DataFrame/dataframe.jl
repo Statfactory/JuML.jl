@@ -430,7 +430,8 @@ function Base.show(io::IO, intvariate::AbstractIntVariate{T}) where {T<:Signed}
     slice1, _ = tryread(slices)
     len = length(intvariate)
     if !isnull(slice1)
-        datahead = join([v == typemin(T) ? "." : string(v) for v in get(slice1)], " ")
+        #datahead = join([v == typemin(T) ? "." : string(v) for v in get(slice1)], " ")
+        datahead = join([string(v) for v in get(slice1)], " ")
         dataend = len > HEADLENGTH ? "  ..." : ""
         println(io, "IntVariate $(getname(intvariate)) with $(len) obs: $(datahead)$dataend")
     else
