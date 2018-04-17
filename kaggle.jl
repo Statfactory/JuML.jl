@@ -10,8 +10,9 @@ using JuML
                  isnumeric = (colname, levelfreq) -> colname in ["is_attributed"],
                  isdatetime = (colname, levelfreq) -> colname in ["click_time", "attributed_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
-@time importcsv("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\test.csv";
+@time importcsv("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test.csv";
                  isnumeric = (colname, levelfreq) -> false,
+                 isinteger = (colname, levelfreq) -> colname in ["ip", "click_id"],
                  isdatetime = (colname, levelfreq) -> colname in ["click_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
 @time importcsv("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\train.csv"; path2 = "C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test.csv",
