@@ -75,7 +75,11 @@ function slice(factor::Factor{T}, fromobs::Integer, toobs::Integer, slicelength:
     slice(factor.data, fromobs, toobs, slicelength)
 end
 
-function Base.map(factor::Factor, dataframe::AbstractDataFrame)
-    dataframe[getname(factor)]
+function Base.map(factor::Factor, dataframe::AbstractDataFrame; permute::Bool = false)
+    if permute
+        PermuteFactor(factor, dataframe[getname(factor)])
+    else
+        dataframe[getname(factor)]
+    end
 end
 

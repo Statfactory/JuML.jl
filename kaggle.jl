@@ -10,7 +10,7 @@ using JuML
                  isnumeric = (colname, levelfreq) -> colname in ["is_attributed"],
                  isdatetime = (colname, levelfreq) -> colname in ["click_time", "attributed_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
-@time importcsv("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test.csv";
+@time importcsv("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\test.csv";
                  isnumeric = (colname, levelfreq) -> false,
                  isinteger = (colname, levelfreq) -> colname in ["ip", "click_id"],
                  isdatetime = (colname, levelfreq) -> colname in ["click_time"] ? (true, "y-m-d H:M:S") : (false, ""))
@@ -24,9 +24,9 @@ using JuML
                  isinteger = (colname, levelfreq) -> colname in ["ip", "click_id"],
                  isdatetime = (colname, levelfreq) -> colname in ["click_time", "attributed_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
-train_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\train", preload = false)
-test_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test", preload = false)
-traintest_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\traintestsup", preload = false)
+#train_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\train", preload = false)
+test_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\test", preload = false)
+traintest_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\traintestsup", preload = false)
 
 factors = traintest_df.factors
 label = traintest_df["is_attributed"] 
@@ -238,21 +238,20 @@ twowayfactors = map((cov -> JuML.factor(cov)), [ipappcount, ipdevicecount, ipcha
 
 #threewayfactors = map((cov -> JuML.factor(cov)), [deviceoschannelcount, apposchannelcount, deviceappchannelcount, deviceapposcount, iposchannelcount, ipdevicechannelcount, iposdevicecount, ipappchannelcount, ipapposcount, ipappdevicecount])
 
-@time model = xgblogit(label, onewayfactors; trainselector = trainset, validselector = validset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = 100.0, minchildweight = 1.0, nrounds = 40, maxdepth = 10, ordstumps = true, pruning = false, leafwise = false, maxleaves = 256, caching = true, usefloat64 = false, singlethread = true, slicelength = 1000000);
+poswgt = 100.0
+@time model = xgblogit(label, onewayfactors; trainselector = trainset, validselector = validset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = poswgt, minchildweight = 1.0, nrounds = 10, maxdepth = 10, ordstumps = true, pruning = false, leafwise = false, maxleaves = 256, caching = true, usefloat64 = false, singlethread = true, slicelength = 1000000);
 
 #@time trainauc = getauc(model.pred, label; selector = trainset) 
 #@time testauc = getauc(model.pred, label; selector = testset)
 
 #mean(model.pred)           
-#@time pred = predict(model, test_df)     
-#mean(pred)
+@time testpred = predict(model, test_df; posweight = poswgt)
+mean(testpred)
 testlen = length(test_df["click_id"])
-istest = convert(BitArray{1}, testset)
-#is_attr = Covariate("is_attributed", model.pred[(length(model.pred) - testlen + 1):length(model.pred)])
-is_attr = Covariate("is_attributed", model.pred[istest])
+is_attr = Covariate("is_attributed", testpred)
 click_id = test_df["click_id"]
-sub_df = DataFrame(testlen, [click_id], [is_attr], JuML.AbstractBoolVariate[], JuML.AbstractDateTimeVariate[])
-JuML.tocsv("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\submission.csv", sub_df)
+sub_df = DataFrame(testlen, JuML.AbstractFactor[], [is_attr], JuML.AbstractBoolVariate[], JuML.AbstractDateTimeVariate[], [click_id])
+JuML.tocsv("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\submission.csv", sub_df)
 
 
 

@@ -430,8 +430,7 @@ function Base.show(io::IO, intvariate::AbstractIntVariate{T}) where {T<:Signed}
     slice1, _ = tryread(slices)
     len = length(intvariate)
     if !isnull(slice1)
-        #datahead = join([v == typemin(T) ? "." : string(v) for v in get(slice1)], " ")
-        datahead = join([string(v) for v in get(slice1)], " ")
+        datahead = join([v == typemin(T) ? "." : string(v) for v in get(slice1)], " ")
         dataend = len > HEADLENGTH ? "  ..." : ""
         println(io, "IntVariate $(getname(intvariate)) with $(len) obs: $(datahead)$dataend")
     else
@@ -546,8 +545,15 @@ end
 
 function slicestring(covariate::AbstractCovariate{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:AbstractFloat}
     slicelength = verifyslicelength(fromobs, toobs, slicelength)
-    f = (x::T) -> isnan(x) ? "" : (x == floor(x) ? @sprintf("%D", x) : @sprintf("%F", x))
+    f = (x::T) -> isnan(x) ? "" : @sprintf("%F", x)
     slices = slice(covariate, fromobs, toobs, slicelength)
+    mapslice(f, slices, slicelength, String)
+end
+
+function slicestring(intvariate::AbstractIntVariate{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:Signed}
+    slicelength = verifyslicelength(fromobs, toobs, slicelength)
+    f = (x::T) -> x == typemin(T) ? "" : @sprintf("%D", x)
+    slices = slice(intvariate, fromobs, toobs, slicelength)
     mapslice(f, slices, slicelength, String)
 end
 
@@ -556,22 +562,12 @@ function tocsv(path::String, dataframe::AbstractDataFrame)
     iostream = open(path, "w")
     factors = dataframe.factors
     covariates = dataframe.covariates
+    intvariates = dataframe.intvariates
+    variates = [factors; covariates; intvariates]
     len = length(dataframe)
-    fslices = [slicestring(f, 1, len, SLICELENGTH) for f in factors]
-    covslices = [slicestring(c, 1, len, SLICELENGTH) for c in covariates]
-    strslices = begin
-        if length(factors) == 0
-            zip(Tuple(covslices))
-        elseif length(covariates) == 0
-            zip(Tuple(fslices))
-        else
-            zip(Tuple([fslices; covslices]))
-        end
-    end
-    ncol = length(factors) + length(covariates)
-    colnames = Vector{String}()
-    foreach((f -> push!(colnames, getname(f))), factors) 
-    foreach((c -> push!(colnames, getname(c))), covariates) 
+    strslices = zip(Tuple([slicestring(v, 1, len, SLICELENGTH) for v in variates]))
+    ncol = length(variates)
+    colnames = [getname(v) for v in variates]
     headersline = join(colnames, ",") * "\r\n"
     write(iostream, headersline)
     foreach(strslices) do x

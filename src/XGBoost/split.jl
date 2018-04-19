@@ -126,7 +126,6 @@ function splitnodeids!(nodeids::Vector{<:Integer}, layer::TreeLayer{T}, slicelen
              factorindex[i] = findfirst(factors, factor)
          end
     end
-    #factors = widenfactors(factors)
     leftpartitions = [isa(n, SplitNode) && n.isactive ? [n.leftnode.partitions[n.factor].inclmissing; n.leftnode.partitions[n.factor].mask] : Vector{Bool}() for n in nodes]
 
     nthreads = singlethread ? 1 : Threads.nthreads()
@@ -512,16 +511,16 @@ function Base.map(node::SplitNode{T}, dataframe::AbstractDataFrame,
     leftmask = Vector{Bool}(levelcount)
     rightmask = Vector{Bool}(levelcount)
     for (i, j) in levelmap
-        leftmask[j] = node.leftpartition.mask[i]
-        rightmask[j] = node.rightpartition.mask[i]
+        leftmask[j] = node.leftnode.partitions[node.factor].mask[i] 
+        rightmask[j] = node.rightnode.partitions[node.factor].mask[i] 
     end
     for i in newind
         leftmask[i] = false
         rightmask[i] = true
     end
-    SplitNode{T}(factor, LevelPartition(leftmask, node.leftpartition.inclmissing),
-                 LevelPartition(rightmask, node.rightpartition.inclmissing), 
-                 node.leftgradient, node.rightgradient, node.loss)
+    node.leftnode.partitions[factor] = LevelPartition(leftmask, node.leftnode.partitions[node.factor].inclmissing)
+    node.rightnode.partitions[factor] = LevelPartition(rightmask, node.rightnode.partitions[node.factor].inclmissing)
+    SplitNode{T}(factor, node.leftnode, node.rightnode, node.loss, node.isactive, node.gain)
 end
 
 function Base.map(node::LeafNode{T}, dataframe::AbstractDataFrame,
@@ -533,23 +532,7 @@ function predict(tree::XGTree{T}, dataframe::AbstractDataFrame) where {T<:Abstra
     len = length(dataframe)
     maxnodecount = tree.leafwise ? tree.maxleaves : 2 ^ tree.maxdepth
     nodeids = maxnodecount <= typemax(UInt8) ? ones(UInt8, len) : (maxnodecount <= typemax(UInt16) ? ones(UInt16, len) : ones(UInt32, len))
-    #nodes = Vector{TreeNode{T}}()
-    # factormap = Dict{AbstractFactor, Tuple{AbstractFactor, Dict{Int64, Int64}, Set{Int64}, Int64}}()
-    # for layer in tree.layers
-    #     for node in layer.nodes
-    #         if isa(node, SplitNode) && !(node.factor in keys(factormap))
-    #             mappedfactor = map(node.factor, dataframe) |> cache
-    #             levelmap = getlevelmap(node.factor, mappedfactor)
-    #             newind = getnewindices(node.factor, mappedfactor)
-    #             levelcount = length(getlevels(mappedfactor))
-    #             factormap[node.factor] = (mappedfactor, levelmap, newind, levelcount)
-    #         end
-    #     end
-    # end
-
     for layer in tree.layers
-        #nodes = [map(n, dataframe, factormap) for n in layer.nodes]
-        #splitnodeids!(nodeids, TreeLayer{T}(nodes), tree.slicelength, tree.singlethread)
         splitnodeids!(nodeids, layer, tree.slicelength, tree.singlethread)
     end
     predict(tree.layers[end], nodeids, tree.λ)

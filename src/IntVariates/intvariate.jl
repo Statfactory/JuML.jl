@@ -18,3 +18,7 @@ function slice(intvariate::IntVariate{T}, fromobs::Integer, toobs::Integer, slic
     slice(intvariate.data, fromobs, toobs, slicelength)
 end
 
+function Base.map(intvariate::IntVariate, dataframe::AbstractDataFrame; permute::Bool = false)
+    dataframe[getname(intvariate)]
+end
+

@@ -66,3 +66,11 @@ function slice(covariate::GroupStatsCovariate{N, U, S, T}, fromobs::Integer, too
         end
     end
 end
+
+function Base.map(covariate::GroupStatsCovariate{N, U, S, T}, dataframe::AbstractDataFrame) where {T<:AbstractFloat} where {N} where {U} where {S}
+    mapkeyvars = map(covariate.groupstats.keyvars) do v
+        map(v, dataframe; permute = true)
+    end
+    gstats = GroupStats{N, U, S}(mapkeyvars, covariate.groupstats.covariate, covariate.groupstats.selector, covariate.groupstats.stats)
+    GroupStatsCovariate{N, U, S, T}(covariate.name, length(dataframe), gstats, covariate.transform)
+end

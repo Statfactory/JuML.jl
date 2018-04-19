@@ -16,3 +16,7 @@ function slice(intvariate::FileIntVariate{T}, fromobs::Integer, toobs::Integer, 
         view(slice, 1:length(slice))
     end
 end
+
+function Base.map(intvariate::FileIntVariate, dataframe::AbstractDataFrame; permute::Bool = false)
+    dataframe[getname(intvariate)]
+end
