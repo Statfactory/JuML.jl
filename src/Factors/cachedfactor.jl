@@ -46,8 +46,8 @@ function slice(factor::CachedFactor{T}, fromobs::Integer, toobs::Integer, slicel
     end
 end
 
-function Base.map(factor::CachedFactor{T}, dataframe::AbstractDataFrame) where {T<:Unsigned}
-    CachedFactor(map(factor.basefactor, dataframe))
+function Base.map(factor::CachedFactor{T}, dataframe::AbstractDataFrame; permute::Bool = false) where {T<:Unsigned}
+    CachedFactor(map(factor.basefactor, dataframe; permute = permute))
 end
 
 function isordinal(factor::CachedFactor{T}) where {T<:Unsigned}

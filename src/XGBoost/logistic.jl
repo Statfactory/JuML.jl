@@ -40,7 +40,6 @@ function xgblogit(label::AbstractCovariate{S}, factors::Vector{<:AbstractFactor}
                   singlethread::Bool = false) where {S<:AbstractFloat}
 
     T = usefloat64 ? Float64 : Float32
-    #factors = caching ? map(cache, widenfactors(filter((f -> getname(f) != getname(label)), factors))) : filter((f -> getname(f) != getname(label)), factors)
     factors = caching ? map(cache, filter((f -> getname(f) != getname(label)), factors)) : filter((f -> getname(f) != getname(label)), factors)
     label = caching ? cache(label) : label
     slicelength = slicelength <= 0 ? length(label) : slicelength
@@ -82,7 +81,7 @@ function xgblogit(label::AbstractCovariate{S}, factors::Vector{<:AbstractFactor}
         fm .= muladd.(η, predraw, fm)
         predraw .= sigmoid.(fm)
         @show m
-        if length(trainselector) > 0 && length(validselector) > 0
+        if length(trainselector) > 0
             @show trainauc, testauc = getauc(predraw, label, trainselector, validselector; slicelength = slicelength)
         else
             @show auc = getauc(predraw, label; slicelength = slicelength)
@@ -238,7 +237,8 @@ function getauc(pred::Vector{T}, label::AbstractCovariate{S}, trainselector::Abs
         end
     end
 
-    validlentrue = begin
+    validlen = length(validselector)
+    validlentrue = validlen == 0 ? 0 : begin
         fold(0, slice(validselector, 1, sellen, slicelength)) do acc, slice
             res = acc
             for v in slice
@@ -255,30 +255,47 @@ function getauc(pred::Vector{T}, label::AbstractCovariate{S}, trainselector::Abs
     uniqcountout = Dict{T, Int64}()
     labelaggout = Dict{T, S}()
 
-    zipslices = zip(labelslices, slice(trainselector, 1, sellen, slicelength), slice(validselector, 1, sellen, slicelength))
-    fold(0, zipslices) do offset, slice
-        labelslice, trainselslice, validselslice = slice
-        for i in 1:length(labelslice)
-            if trainselslice[i]
-                v = pred[offset + i]
-                uniqcountin[v] = get(uniqcountin, v, 0) + 1
-                labelaggin[v] = get(labelaggin, v, zero(S)) + labelslice[i]              
-            elseif validselslice[i]
-                v = pred[offset + i]
-                uniqcountout[v] = get(uniqcountout, v, 0) + 1
-                labelaggout[v] = get(labelaggout, v, zero(S)) + labelslice[i]  
+    if validlen > 0
+        zipslices = zip(labelslices, slice(trainselector, 1, sellen, slicelength), slice(validselector, 1, sellen, slicelength))
+        fold(0, zipslices) do offset, slice
+            labelslice, trainselslice, validselslice = slice
+            for i in 1:length(labelslice)
+                if trainselslice[i]
+                    v = pred[offset + i]
+                    uniqcountin[v] = get(uniqcountin, v, 0) + 1
+                    labelaggin[v] = get(labelaggin, v, zero(S)) + labelslice[i]              
+                elseif validselslice[i]
+                    v = pred[offset + i]
+                    uniqcountout[v] = get(uniqcountout, v, 0) + 1
+                    labelaggout[v] = get(labelaggout, v, zero(S)) + labelslice[i]  
+                end
             end
+            offset + length(labelslice)
         end
-        offset + length(labelslice)
+    else
+        zipslices = zip(labelslices, slice(trainselector, 1, sellen, slicelength))
+        fold(0, zipslices) do offset, slice
+            labelslice, trainselslice = slice
+            for i in 1:length(labelslice)
+                if trainselslice[i]
+                    v = pred[offset + i]
+                    uniqcountin[v] = get(uniqcountin, v, 0) + 1
+                    labelaggin[v] = get(labelaggin, v, zero(S)) + labelslice[i]              
+                end
+            end
+            offset + length(labelslice)
+        end
     end
 
     uniqpredin = collect(keys(uniqcountin))
     sort!(uniqpredin; rev = true)
     ucountin = map((v -> uniqcountin[v]), uniqpredin)
 
-    uniqpredout = collect(keys(uniqcountout))
-    sort!(uniqpredout; rev = true)
-    ucountout = map((v -> uniqcountout[v]), uniqpredout)
+    if validlen > 0
+        uniqpredout = collect(keys(uniqcountout))
+        sort!(uniqpredout; rev = true)
+        ucountout = map((v -> uniqcountout[v]), uniqpredout)
+    end
 
     aucin = begin
         sumlabel = sum(values(labelaggin))
@@ -296,7 +313,7 @@ function getauc(pred::Vector{T}, label::AbstractCovariate{S}, trainselector::Abs
         0.5 * (sum((tpr1 .+ tpr2) .* (fpr2 .- fpr1)) + area0)
     end
 
-    aucout = begin
+    aucout = validlen == 0 ? NaN64 : begin
         sumlabel = sum(values(labelaggout))
         cumlabel = cumsum(map((p -> labelaggout[p]), uniqpredout))
         cumcount = cumsum(ucountout)

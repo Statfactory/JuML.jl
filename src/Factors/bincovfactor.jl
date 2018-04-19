@@ -88,7 +88,7 @@ function slice(factor::BinCovFactor{T}, fromobs::Integer, toobs::Integer, slicel
     mapslice(f, slices, slicelength, T)
 end
 
-function Base.map(factor::BinCovFactor{T}, dataframe::AbstractDataFrame) where {T<:Unsigned}
+function Base.map(factor::BinCovFactor{T}, dataframe::AbstractDataFrame; permute::Bool = false) where {T<:Unsigned}
     BinCovFactor(getname(factor), factor.bins, map(factor.covariate, dataframe))
 end
 
