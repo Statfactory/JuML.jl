@@ -92,6 +92,7 @@ haslabel = JuML.TransCovBoolVariate("", label, x -> !isnan(x))
 
 trainset = JuML.TransDateTimeBoolVariate("", click_time, t -> t < validstart) 
 validset = JuML.TransDateTimeBoolVariate("", click_time, t -> t >= validstart) .& haslabel
+zeroset = BoolVariate("", BitArray{1}(0))
 #testset = JuML.TransDateTimeBoolVariate("", click_time, t -> t == p1[2]) 
 #summary(testset)
 #trainvalidset = or.(trainset, validset)
@@ -239,7 +240,7 @@ twowayfactors = map((cov -> JuML.factor(cov)), [ipappcount, ipdevicecount, ipcha
 #threewayfactors = map((cov -> JuML.factor(cov)), [deviceoschannelcount, apposchannelcount, deviceappchannelcount, deviceapposcount, iposchannelcount, ipdevicechannelcount, iposdevicecount, ipappchannelcount, ipapposcount, ipappdevicecount])
 
 poswgt = 100.0
-@time model = xgblogit(label, onewayfactors; trainselector = trainset, validselector = validset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = poswgt, minchildweight = 1.0, nrounds = 10, maxdepth = 10, ordstumps = true, pruning = false, leafwise = false, maxleaves = 256, caching = true, usefloat64 = false, singlethread = true, slicelength = 1000000);
+@time model = xgblogit(label, onewayfactors; trainselector = haslabel, validselector = zeroset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = poswgt, minchildweight = 1.0, nrounds = 10, maxdepth = 10, ordstumps = true, pruning = false, leafwise = false, maxleaves = 256, caching = true, usefloat64 = false, singlethread = true, slicelength = 1000000);
 
 @time testpred = predict(model, test_df; posweight = poswgt)
 testlen = length(test_df["click_id"])
