@@ -33,10 +33,10 @@ label = traintest_df["is_attributed"]
 click_time = traintest_df["click_time"]
 summary(click_time)
 
-#clickday = factor(JuML.TransDateTimeCovariate("ClickDay", click_time, Dates.day)); 
-#clickhour24 = factor(JuML.TransDateTimeCovariate("ClickHour24", test_df["click_time"], Dates.hour))
+clickday = factor(JuML.TransDateTimeCovariate("ClickDay", click_time, Dates.dayofweek)); 
+clickhour = factor(JuML.TransDateTimeCovariate("ClickHour", click_time, Dates.hour));
 #nmin = 15
-clickhour = factor(JuML.TransDateTimeCovariate("ClickHour", click_time, dt -> 24 * Dates.dayofweek(dt) + Dates.hour(dt)))
+#clickhour = factor(JuML.TransDateTimeCovariate("ClickHour", click_time, dt -> 24 * Dates.dayofweek(dt) + Dates.hour(dt)))
 #clickminute = factor(JuML.TransDateTimeCovariate("ClickMinute", click_time, dt -> 24 * 60 * Dates.dayofweek(dt) + 60 * Dates.hour(dt) + Dates.minute(dt))) |> cache
 #clicksec = factor(click_time);
 #summary(clickhour)
@@ -92,7 +92,7 @@ haslabel = JuML.TransCovBoolVariate("", label, x -> !isnan(x))
 
 trainset = JuML.TransDateTimeBoolVariate("", click_time, t -> t < validstart) 
 validset = JuML.TransDateTimeBoolVariate("", click_time, t -> t >= validstart) .& haslabel
-zeroset = BoolVariate("", BitArray{1}(0))
+#zeroset = BoolVariate("", BitArray{1}(0))
 #testset = JuML.TransDateTimeBoolVariate("", click_time, t -> t == p1[2]) 
 #summary(testset)
 #trainvalidset = or.(trainset, validset)
@@ -128,11 +128,18 @@ device = traintest_df["device"]
 #ipdevicehourpcnt = JuML.GroupStatsCovariate("iphourpcnt", getgroupstats(app, clickhour24)) ./ hourcount
 
 
-hourcount = JuML.GroupStatsCovariate("hourcount", getgroupstats(clickhour));
+#hourcount = JuML.GroupStatsCovariate("hourcount", getgroupstats(clickhour));
 
 #minutecount = JuML.GroupStatsCovariate("minutecount", getgroupstats(clickminute));
 
 #seccount = JuML.GroupStatsCovariate("minutecount", getgroupstats(clicksec));
+
+#ip per hour:
+iphourdaycount = JuML.GroupStatsCovariate("iphourdaycount", getgroupstats(ip, clickhour, clickday));
+iphourappcount = JuML.GroupStatsCovariate("iphourappcount", getgroupstats(ip, clickhour, app));
+iphouroscount = JuML.GroupStatsCovariate("iphouroscount", getgroupstats(ip, clickhour, os));
+iphourdevicecount = JuML.GroupStatsCovariate("iphourdevicecount", getgroupstats(ip, clickhour, device));
+iphourchannelcount = JuML.GroupStatsCovariate("iphourchannelcount", getgroupstats(ip, clickhour, channel));
 
 #1way:
 ipcount = JuML.GroupStatsCovariate("ipcount", getgroupstats(ip));
@@ -186,7 +193,7 @@ devicehourcount = JuML.GroupStatsCovariate("devicehourcount", getgroupstats(devi
 # ipappcount = JuML.GroupStatsCovariate("ipappcount", getgroupstats((ip, app)))
 # ipdevicecount = JuML.GroupStatsCovariate("ipdevicecount", getgroupstats((ip, device)))
 
-labelstats = getstats(label)
+
 
 #ipmean = JuML.GroupStatsCovariate("ipcount", getgroupstats(ip, label), s -> isnan(s.mean) ? labelstats.mean : s.mean)
 #osmean = JuML.GroupStatsCovariate("oscount", getgroupstats(os, label), s -> isnan(s.mean) ? labelstats.mean : s.mean)
@@ -233,14 +240,18 @@ onewayfactors = map((cov -> JuML.factor(cov)), [hourcount, ipcount, oscount, dev
 #poswgt = (1.0 - labelstats.mean) / labelstats.mean
 #datafactors = [clickhour24, JuML.OrdinalFactor(os), JuML.OrdinalFactor(device), JuML.OrdinalFactor(app,), JuML.OrdinalFactor(channel)]
 
+iphourfactors = map((cov -> JuML.factor(cov)), [iphourdaycount, iphouroscount, iphourdevicecount, iphourappcount, iphourchannelcount])
 #onewayhourfactors = map((cov -> JuML.factor(cov)), [hourcount, iphourcount, oshourcount, devicehourcount, apphourcount, channelhourcount])
 
 twowayfactors = map((cov -> JuML.factor(cov)), [ipappcount, ipdevicecount, ipchannelcount, iposcount, appdevicecount, apposcount, appchannelcount, deviceoscount, devicechannelcount, oschannelcount])
 
 #threewayfactors = map((cov -> JuML.factor(cov)), [deviceoschannelcount, apposchannelcount, deviceappchannelcount, deviceapposcount, iposchannelcount, ipdevicechannelcount, iposdevicecount, ipappchannelcount, ipapposcount, ipappdevicecount])
 
-poswgt = 100.0
-@time model = xgblogit(label, [app, device, channel, os]; trainselector = haslabel, validselector = zeroset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = poswgt, minchildweight = 1.0, nrounds = 30, maxdepth = 12, ordstumps = true, pruning = false, leafwise = false, maxleaves = 256, caching = true, usefloat64 = false, singlethread = true, slicelength = 1000000);
+labelstats = getstats(label)
+
+poswgt = (1.0 - labelstats.mean) * 100.0
+
+@time model = xgblogit(label, [iphourfactors; [app, device, channel, os]]; trainselector = trainset, validselector = validset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = poswgt, minchildweight = 1.0, nrounds = 30, maxdepth = 8, ordstumps = true, pruning = false, leafwise = false, maxleaves = 256, caching = true, usefloat64 = false, singlethread = false, slicelength = 1000000);
 
 @time testpred = predict(model, test_df; posweight = poswgt)
 testlen = length(test_df["click_id"])
