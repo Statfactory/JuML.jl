@@ -151,6 +151,8 @@ function getsplitnode(factor::AbstractFactor, leafnode::LeafNode{T}, gradient::V
     gradstart = findfirst(partition.mask, true) + 1
     ∂𝑙sum0 = sum((grad -> grad.∂𝑙), gradient[gradstart:end])
     ∂²𝑙sum0 = sum((grad -> grad.∂²𝑙), gradient[gradstart:end]) 
+    k = length(gradient) - gradstart + 1
+    f = isord ? collect(1:k) : sortperm([gradient[i].∂𝑙 / gradient[i].∂²𝑙 for i in gradstart:length(gradient)])
     miss∂𝑙 = gradient[1].∂𝑙 
     miss∂²𝑙 = gradient[1].∂²𝑙
     currloss = getloss(∂𝑙sum0 + miss∂𝑙, ∂²𝑙sum0 + miss∂²𝑙, λ)
@@ -162,8 +164,8 @@ function getsplitnode(factor::AbstractFactor, leafnode::LeafNode{T}, gradient::V
     leftpartition = deepcopy(leftnode.partitions[factor])
     rightpartition = deepcopy(rightnode.partitions[factor])
     
-    left∂𝑙sum = gradient[gradstart].∂𝑙
-    left∂²𝑙sum = gradient[gradstart].∂²𝑙
+    left∂𝑙sum = isord ? gradient[gradstart].∂𝑙 : gradient[gradstart + f[1] - 1].∂𝑙
+    left∂²𝑙sum = isord ? gradient[gradstart].∂²𝑙 : gradient[gradstart + f[1] - 1].∂²𝑙
 
     firstlevelwithmiss = getloss(left∂𝑙sum + miss∂𝑙, left∂²𝑙sum + miss∂²𝑙, λ) + getloss(∂𝑙sum0 - left∂𝑙sum, ∂²𝑙sum0 - left∂²𝑙sum, λ)
     firstlevelwitouthmiss = getloss(left∂𝑙sum, left∂²𝑙sum, λ) + getloss(∂𝑙sum0 - left∂𝑙sum + miss∂𝑙, ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙, λ)
@@ -174,9 +176,9 @@ function getsplitnode(factor::AbstractFactor, leafnode::LeafNode{T}, gradient::V
             split.leftnode.gradient.∂²𝑙 = left∂²𝑙sum
             split.rightnode.gradient.∂𝑙 = ∂𝑙sum0 - left∂𝑙sum + miss∂𝑙
             split.rightnode.gradient.∂²𝑙 = ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙
-            for j in 1:levelcount
-                leftpartition.mask[j] = j == (gradstart - 1)
-                rightpartition.mask[j] = j == (gradstart - 1) ? false : partition.mask[j]
+            for j in (gradstart - 1):levelcount
+                leftpartition.mask[j] = j == (gradstart + f[1] - 2)
+                rightpartition.mask[j] = j == (gradstart + f[1] - 2) ? false : partition.mask[j]
             end
             leftpartition.inclmissing = false
             rightpartition.inclmissing = partition.inclmissing
@@ -186,9 +188,9 @@ function getsplitnode(factor::AbstractFactor, leafnode::LeafNode{T}, gradient::V
             split.leftnode.gradient.∂²𝑙 = left∂²𝑙sum + miss∂²𝑙
             split.rightnode.gradient.∂𝑙 = ∂𝑙sum0 - left∂𝑙sum
             split.rightnode.gradient.∂²𝑙 = ∂²𝑙sum0 - left∂²𝑙sum
-            for j in 1:levelcount
-                leftpartition.mask[j] = j == (gradstart - 1)
-                rightpartition.mask[j] = j == (gradstart - 1) ? false : partition.mask[j]
+            for j in (gradstart - 1):levelcount
+                leftpartition.mask[j] = j == (gradstart + f[1] - 2)
+                rightpartition.mask[j] = j == (gradstart + f[1] - 2) ? false : partition.mask[j]
             end
             leftpartition.inclmissing = partition.inclmissing
             rightpartition.inclmissing = false
@@ -197,11 +199,12 @@ function getsplitnode(factor::AbstractFactor, leafnode::LeafNode{T}, gradient::V
     end
 
     @inbounds for i in (gradstart + 1):(levelcount + 1)
-        if !partition.mask[i - 1]
+        fi = isord ? i : (gradstart - 1) + f[(i - gradstart) + 1]
+        if !partition.mask[fi - 1]
             continue
         end
-        ∂𝑙 = gradient[i].∂𝑙
-        ∂²𝑙 = gradient[i].∂²𝑙
+        ∂𝑙 = gradient[fi].∂𝑙
+        ∂²𝑙 = gradient[fi].∂²𝑙
 
         singlelevelwithmisstotal = getloss(∂𝑙 + miss∂𝑙, ∂²𝑙 + miss∂²𝑙, λ) + getloss(∂𝑙sum0 - ∂𝑙, ∂²𝑙sum0 - ∂²𝑙, λ)
         singlelevelwitouthmisstotal = getloss(∂𝑙, ∂²𝑙, λ) + getloss(∂𝑙sum0 - ∂𝑙 + miss∂𝑙, ∂²𝑙sum0 - ∂²𝑙 + miss∂²𝑙, λ)
@@ -212,35 +215,6 @@ function getsplitnode(factor::AbstractFactor, leafnode::LeafNode{T}, gradient::V
         leftwithmisstotal = getloss(left∂𝑙sum + miss∂𝑙, left∂²𝑙sum + miss∂²𝑙, λ) + getloss(∂𝑙sum0 - left∂𝑙sum, ∂²𝑙sum0 - left∂²𝑙sum, λ)
         leftwithoutmisstotal = getloss(left∂𝑙sum, left∂²𝑙sum, λ) + getloss(∂𝑙sum0 - left∂𝑙sum + miss∂𝑙, ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙, λ)
 
-        if isord
-            if leftwithmisstotal < split.loss && (left∂²𝑙sum + miss∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - left∂²𝑙sum >= min∂²𝑙)
-                if leftwithoutmisstotal < leftwithmisstotal && (left∂²𝑙sum >= min∂²𝑙) && (∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙 >= min∂²𝑙)
-                    split.leftnode.gradient.∂𝑙 = left∂𝑙sum
-                    split.leftnode.gradient.∂²𝑙 = left∂²𝑙sum
-                    split.rightnode.gradient.∂𝑙 = ∂𝑙sum0 - left∂𝑙sum + miss∂𝑙
-                    split.rightnode.gradient.∂²𝑙 = ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙
-                    for j in 1:levelcount
-                        leftpartition.mask[j] = j < i ? partition.mask[j] : false
-                        rightpartition.mask[j] = j < i ? false : partition.mask[j]
-                    end
-                    leftpartition.inclmissing = false
-                    rightpartition.inclmissing = partition.inclmissing
-                    split.loss = leftwithoutmisstotal
-                else
-                    split.leftnode.gradient.∂𝑙 = left∂𝑙sum + miss∂𝑙
-                    split.leftnode.gradient.∂²𝑙 = left∂²𝑙sum + miss∂²𝑙
-                    split.rightnode.gradient.∂𝑙 = ∂𝑙sum0 - left∂𝑙sum
-                    split.rightnode.gradient.∂²𝑙 = ∂²𝑙sum0 - left∂²𝑙sum
-                    for j in 1:levelcount
-                        leftpartition.mask[j] = j < i ? partition.mask[j] : false
-                        rightpartition.mask[j] = j < i ? false : partition.mask[j]
-                    end
-                    leftpartition.inclmissing = partition.inclmissing
-                    rightpartition.inclmissing = false
-                    split.loss = leftwithmisstotal
-                end
-            end
-        end
         if ordstumps || !isord
             if singlelevelwithmisstotal < split.loss && (∂²𝑙 + miss∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - ∂²𝑙 >= min∂²𝑙)
                 if singlelevelwitouthmisstotal < singlelevelwithmisstotal && (∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - ∂²𝑙 + miss∂²𝑙 >= min∂²𝑙)
@@ -248,10 +222,6 @@ function getsplitnode(factor::AbstractFactor, leafnode::LeafNode{T}, gradient::V
                     split.leftnode.gradient.∂²𝑙 =  ∂²𝑙
                     split.rightnode.gradient.∂𝑙 = ∂𝑙sum0 - ∂𝑙 + miss∂𝑙
                     split.rightnode.gradient.∂²𝑙 = ∂²𝑙sum0 - ∂²𝑙 + miss∂²𝑙
-                    for j in 1:levelcount
-                        leftpartition.mask[j] = j == (i - 1)
-                        rightpartition.mask[j] = j == (i - 1) ? false : partition.mask[j]
-                    end
                     leftpartition.inclmissing = false
                     rightpartition.inclmissing = partition.inclmissing
                     split.loss = singlelevelwitouthmisstotal
@@ -260,17 +230,51 @@ function getsplitnode(factor::AbstractFactor, leafnode::LeafNode{T}, gradient::V
                     split.leftnode.gradient.∂²𝑙 =  ∂²𝑙 + miss∂²𝑙
                     split.rightnode.gradient.∂𝑙 = ∂𝑙sum0 - ∂𝑙
                     split.rightnode.gradient.∂²𝑙 = ∂²𝑙sum0 - ∂²𝑙
-                    for j in 1:levelcount
-                        leftpartition.mask[j] = j == (i - 1)
-                        rightpartition.mask[j] = j == (i - 1) ? false : partition.mask[j]
-                    end
                     leftpartition.inclmissing = partition.inclmissing
                     rightpartition.inclmissing = false
                     split.loss = singlelevelwithmisstotal
                 end
+                fi = isord ? (i - 1) : (fi - 1)
+                for j in (gradstart - 1):levelcount
+                    leftpartition.mask[j] = j == fi
+                    rightpartition.mask[j] = j == fi ? false : partition.mask[j]
+                end
             end
         end
+        
+        #if isord
+            if leftwithmisstotal < split.loss && (left∂²𝑙sum + miss∂²𝑙 >= min∂²𝑙) && (∂²𝑙sum0 - left∂²𝑙sum >= min∂²𝑙)
+                if leftwithoutmisstotal < leftwithmisstotal && (left∂²𝑙sum >= min∂²𝑙) && (∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙 >= min∂²𝑙)
+                    split.leftnode.gradient.∂𝑙 = left∂𝑙sum
+                    split.leftnode.gradient.∂²𝑙 = left∂²𝑙sum
+                    split.rightnode.gradient.∂𝑙 = ∂𝑙sum0 - left∂𝑙sum + miss∂𝑙
+                    split.rightnode.gradient.∂²𝑙 = ∂²𝑙sum0 - left∂²𝑙sum + miss∂²𝑙
+                    leftpartition.inclmissing = false
+                    rightpartition.inclmissing = partition.inclmissing
+                    split.loss = leftwithoutmisstotal
+                else
+                    split.leftnode.gradient.∂𝑙 = left∂𝑙sum + miss∂𝑙
+                    split.leftnode.gradient.∂²𝑙 = left∂²𝑙sum + miss∂²𝑙
+                    split.rightnode.gradient.∂𝑙 = ∂𝑙sum0 - left∂𝑙sum
+                    split.rightnode.gradient.∂²𝑙 = ∂²𝑙sum0 - left∂²𝑙sum
+                    leftpartition.inclmissing = partition.inclmissing
+                    rightpartition.inclmissing = false
+                    split.loss = leftwithmisstotal
+                end
+                for j in (gradstart - 1):levelcount
+                    fj = isord ? j : (gradstart - 2) + f[(j - gradstart) + 2]
+                    if j <= i - 1
+                        leftpartition.mask[fj] = partition.mask[fj]
+                        rightpartition.mask[fj] = false
+                    else
+                        leftpartition.mask[fj] = false
+                        rightpartition.mask[fj] = partition.mask[fj]
+                    end
+                end
+            end
+        #end
     end
+
     if count(rightpartition.mask) > 0 && split.loss < typemax(T)
         split.gain = currloss - split.loss
         leftnode.partitions[factor] = leftpartition

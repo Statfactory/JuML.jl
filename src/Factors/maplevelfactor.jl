@@ -51,6 +51,6 @@ function slice(factor::MapLevelFactor{S, T}, fromobs::Integer, toobs::Integer, s
     mapslice(f, slices, slicelength, T)
 end
 
-function Base.map(factor::MapLevelFactor{S, T}, dataframe::AbstractDataFrame) where {S<:Unsigned} where {T<:Unsigned}
-    MapLevelFactor(factor.name, map(factor.basefactor, dataframe), factor.transform)
+function Base.map(factor::MapLevelFactor{S, T}, dataframe::AbstractDataFrame; permute::Bool = false) where {S<:Unsigned} where {T<:Unsigned}
+    MapLevelFactor(factor.name, map(factor.basefactor, dataframe; permute = permute), factor.transform)
 end

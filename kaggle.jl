@@ -1,22 +1,24 @@
-#push!(LOAD_PATH, "C:\\Users\\adamm\\Dropbox\\Development\\JuML\\src")
-push!(LOAD_PATH, "C:\\Users\\statfactory\\Documents\\JuML.jl\\src")
+push!(LOAD_PATH, "C:\\Users\\adamm\\Dropbox\\Development\\JuML\\src")
+#push!(LOAD_PATH, "C:\\Users\\statfactory\\Documents\\JuML.jl\\src")
 using JuML
 
 @time importcsv("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\train_sample.csv";
                  isnumeric = (colname, levelfreq) -> colname in ["is_attributed"],
                  isdatetime = (colname, levelfreq) -> colname in ["click_time", "attributed_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
-@time importcsv("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\train.csv";
+@time importcsv("C:\\Users\\adamm\\Documents\\Julia\\kaggle\\train.csv";
                  isnumeric = (colname, levelfreq) -> colname in ["is_attributed"],
+                 isinteger = (colname, levelfreq) -> colname in ["ip"],
                  isdatetime = (colname, levelfreq) -> colname in ["click_time", "attributed_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
-@time importcsv("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\test.csv";
+@time importcsv("C:\\Users\\adamm\\Documents\\Julia\\kaggle\\test.csv";
                  isnumeric = (colname, levelfreq) -> false,
                  isinteger = (colname, levelfreq) -> colname in ["ip", "click_id"],
                  isdatetime = (colname, levelfreq) -> colname in ["click_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
-@time importcsv("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\train.csv"; path2 = "C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test.csv",
+@time importcsv("C:\\Users\\adamm\\Documents\\Julia\\kaggle\\train.csv"; path2 = "C:\\Users\\adamm\\Documents\\Julia\\kaggle\\test.csv",
                  isnumeric = (colname, levelfreq) -> colname in ["is_attributed"],
+                 isinteger = (colname, levelfreq) -> colname in ["ip", "click_id"],
                  isdatetime = (colname, levelfreq) -> colname in ["click_time", "attributed_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
 @time importcsv("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\train.csv"; path2 = "C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\testsup.csv",
@@ -24,74 +26,48 @@ using JuML
                  isinteger = (colname, levelfreq) -> colname in ["ip", "click_id"],
                  isdatetime = (colname, levelfreq) -> colname in ["click_time", "attributed_time"] ? (true, "y-m-d H:M:S") : (false, ""))
 
-#train_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\train", preload = false)
-test_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\test", preload = false)
-traintest_df = DataFrame("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\traintestsup", preload = false)
 
-factors = traintest_df.factors
+#train_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\train", preload = false)
+test_df = DataFrame("C:\\Users\\adamm\\Documents\\Julia\\kaggle\\test", preload = false)
+traintest_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\kaggle\\traintestsup", preload = false)
+#train_df = DataFrame("C:\\Users\\adamm\\Documents\\Julia\\kaggle\\train", preload = false)
+
+#n = length(traintest_df) - length(test_df)
+#train_df = filter(BoolVariate("train", BitArray((1:length(traintest_df)) .<= n)), traintest_df)
+
 label = traintest_df["is_attributed"] 
 click_time = traintest_df["click_time"]
-summary(click_time)
+#summary(click_time)
 
-clickday = factor(JuML.TransDateTimeCovariate("ClickDay", click_time, Dates.dayofweek)); 
-clickhour = factor(JuML.TransDateTimeCovariate("ClickHour", click_time, Dates.hour));
-#nmin = 15
-#clickhour = factor(JuML.TransDateTimeCovariate("ClickHour", click_time, dt -> 24 * Dates.dayofweek(dt) + Dates.hour(dt)))
+#clickday = factor(JuML.TransDateTimeCovariate("ClickDay", click_time, Dates.dayofweek));
+#clickhour = factor(JuML.TransDateTimeCovariate("ClickHour", click_time, Dates.hour));
+nmin = 60
+clickhour = factor(JuML.TransDateTimeCovariate("ClickHour", click_time, dt -> (24 * 60 * Dates.dayofweek(dt) + 60 * Dates.hour(dt) + Dates.minute(dt)) ÷ nmin)) |> cache;
 #clickminute = factor(JuML.TransDateTimeCovariate("ClickMinute", click_time, dt -> 24 * 60 * Dates.dayofweek(dt) + 60 * Dates.hour(dt) + Dates.minute(dt))) |> cache
 #clicksec = factor(click_time);
 #summary(clickhour)
 
-# function prepfactor(factorname::String, train::DataFrame, test::DataFrame)
-#     train_f = train[factorname]
-#     test_f = test[factorname]
-#     testset = Set(JuML.getlevels(test_f))
-#     newfactor = MapLevelFactor(factorname, train_f, (level::String -> level in testset ? level : "NotInTest"))
-#     JuML.OrdinalFactor(newfactor)
-# end
-
-# function fmean(f::JuML.AbstractFactor, label::JuML.AbstractCovariate, labelstats, gstats)
-#     #gstats = JuML.getstats([f], label)
-#     m = JuML.GroupStatsCovariate(JuML.getname(f), gstats, s -> isnan(s.mean) ? labelstats.mean : s.mean)
-#     JuML.factor(m, 0.0:0.004:1.0)
-# end
-
-# function fcount(name::String, gstats)
-#     c = JuML.GroupStatsCovariate(name, gstats, s -> s.obscount)
-#     v = convert(Vector{Float32}, c)
-#     JuML.factor(c, unique(v))
-# end
-
-# function maplevels(trainfactor::JuML.AbstractFactor, testfactor::JuML.AbstractFactor)
-#     testlevels = Set(JuML.getlevels(testfactor))
-#     JuML.MapLevelFactor(JuML.getname(trainfactor), trainfactor, level -> level in testlevels ? level : "NotInTest")
-# end
-
-# function quantilebin(cov::JuML.AbstractCovariate, qcount::Integer)
-#     v = convert(Vector{Float32}, cov)
-#     bins = unique(quantile(v, 0.0:(1.0 / qcount):1.0))
-#     factor(cov, bins)
-# end
 
 
-# ip = prepfactor("ip", train_df, test_df)
-# os = prepfactor("os", train_df, test_df)
-# channel = prepfactor("channel", train_df, test_df)
-# device = prepfactor("device", train_df, test_df)
-# app = prepfactor("app", train_df, test_df)
-
-
-
+function maplevels(f::JuML.AbstractFactor, minfreq::Integer)
+    levels = Set(map((x -> x.level), filter((x -> x.freq >= minfreq), JuML.getstats(f).levelstats)))
+    JuML.MapLevelFactor(JuML.getname(f), f, level -> level in levels ? level : "Other")
+end
 
 #p1 = DateTime(2017, 11, 10, 4, 0, 0), DateTime(2017, 11, 10, 6, 0, 0)
 #p2 = DateTime(2017, 11, 10, 9, 0, 0), DateTime(2017, 11, 10, 11, 0, 0)
 #p3 = DateTime(2017, 11, 10, 13, 0, 0), DateTime(2017, 11, 10, 15, 0, 0)
 
-teststart = DateTime(2017, 11, 9, 16, 0, 0)
+#teststart = DateTime(2017, 11, 9, 16, 0, 0)
 validstart = DateTime(2017, 11, 9, 13, 0, 0)
 haslabel = JuML.TransCovBoolVariate("", label, x -> !isnan(x))
 
 trainset = JuML.TransDateTimeBoolVariate("", click_time, t -> t < validstart) 
 validset = JuML.TransDateTimeBoolVariate("", click_time, t -> t >= validstart) .& haslabel
+
+#trainset = BoolVariate("", BitArray(x <= 57000000 for x in 1:60000000))
+#validset = BoolVariate("", BitArray(x > 57000000 for x in 1:60000000))
+
 #zeroset = BoolVariate("", BitArray{1}(0))
 #testset = JuML.TransDateTimeBoolVariate("", click_time, t -> t == p1[2]) 
 #summary(testset)
@@ -135,11 +111,12 @@ device = traintest_df["device"]
 #seccount = JuML.GroupStatsCovariate("minutecount", getgroupstats(clicksec));
 
 #ip per hour:
-iphourdaycount = JuML.GroupStatsCovariate("iphourdaycount", getgroupstats(ip, clickhour, clickday));
+iphourdaycount = JuML.GroupStatsCovariate("iphourdaycount", getgroupstats(ip, clickhour));
 iphourappcount = JuML.GroupStatsCovariate("iphourappcount", getgroupstats(ip, clickhour, app));
 iphouroscount = JuML.GroupStatsCovariate("iphouroscount", getgroupstats(ip, clickhour, os));
 iphourdevicecount = JuML.GroupStatsCovariate("iphourdevicecount", getgroupstats(ip, clickhour, device));
 iphourchannelcount = JuML.GroupStatsCovariate("iphourchannelcount", getgroupstats(ip, clickhour, channel));
+iphourappchannelcount = JuML.GroupStatsCovariate("iphourappchannelcount", getgroupstats(ip, clickhour, app, channel));
 
 #1way:
 ipcount = JuML.GroupStatsCovariate("ipcount", getgroupstats(ip));
@@ -240,7 +217,7 @@ onewayfactors = map((cov -> JuML.factor(cov)), [hourcount, ipcount, oscount, dev
 #poswgt = (1.0 - labelstats.mean) / labelstats.mean
 #datafactors = [clickhour24, JuML.OrdinalFactor(os), JuML.OrdinalFactor(device), JuML.OrdinalFactor(app,), JuML.OrdinalFactor(channel)]
 
-iphourfactors = map((cov -> JuML.factor(cov)), [iphourdaycount, iphouroscount, iphourdevicecount, iphourappcount, iphourchannelcount])
+iphourfactors = map((cov -> JuML.factor(cov)), [iphourdaycount, iphouroscount, iphourdevicecount, iphourappcount, iphourchannelcount, iphourappchannelcount])
 #onewayhourfactors = map((cov -> JuML.factor(cov)), [hourcount, iphourcount, oshourcount, devicehourcount, apphourcount, channelhourcount])
 
 twowayfactors = map((cov -> JuML.factor(cov)), [ipappcount, ipdevicecount, ipchannelcount, iposcount, appdevicecount, apposcount, appchannelcount, deviceoscount, devicechannelcount, oschannelcount])
@@ -251,14 +228,18 @@ labelstats = getstats(label)
 
 poswgt = (1.0 - labelstats.mean) * 100.0
 
-@time model = xgblogit(label, [iphourfactors; [app, device, channel, os]]; trainselector = trainset, validselector = validset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = poswgt, minchildweight = 1.0, nrounds = 30, maxdepth = 8, ordstumps = true, pruning = false, leafwise = false, maxleaves = 256, caching = true, usefloat64 = false, singlethread = false, slicelength = 1000000);
+mapped = map((f -> maplevels(f, 10000)), [app, device, channel, os])
 
-@time testpred = predict(model, test_df; posweight = poswgt)
+@time model = xgblogit(label, [iphourfactors; mapped]; trainselector = trainset, validselector = validset, η = 0.1, λ = 1.0, γ = 0.0, μ = 0.5, subsample = 1.0, posweight = poswgt, minchildweight = 0.0, nrounds = 150, maxdepth = 7, ordstumps = true, pruning = false, leafwise = false, maxleaves = 8, caching = true, usefloat64 = false, singlethread = false, slicelength = 1000000);
+
+#@time testpred = predict(model, test_df; posweight = poswgt)
+
 testlen = length(test_df["click_id"])
-is_attr = Covariate("is_attributed", testpred)
+is_attr = Covariate("is_attributed", model.pred[(length(traintest_df) - testlen + 1):end])
+
 click_id = test_df["click_id"]
-sub_df = DataFrame(testlen, JuML.AbstractFactor[], [is_attr], JuML.AbstractBoolVariate[], JuML.AbstractDateTimeVariate[], [click_id])
-JuML.tocsv("C:\\Users\\statfactory\\Documents\\Julia\\kaggle\\submission.csv", sub_df)
+sub_df = DataFrame(testlen, JuML.AbstractFactor[], [is_attr], JuML.AbstractBoolVariate[], JuML.AbstractDateTimeVariate[], [click_id], "")
+JuML.tocsv("C:\\Users\\adamm\\Documents\\Julia\\kaggle\\submission.csv", sub_df)
 
 
 

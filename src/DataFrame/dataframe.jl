@@ -21,6 +21,7 @@ struct DataFrame <: AbstractDataFrame
     boolvariates::AbstractVector{<:AbstractBoolVariate}
     datetimevariates::AbstractVector{<:AbstractDateTimeVariate}
     intvariates::AbstractVector{<:AbstractIntVariate}
+    headerpath::String
 end
 
 mutable struct CovariateStats
@@ -159,7 +160,7 @@ function DataFrame(path::String; preload::Bool = true)
             end       
         end
     end
-    DataFrame(len, factors, covariates, AbstractBoolVariate[], dtvariates, intvariates)
+    DataFrame(len, factors, covariates, AbstractBoolVariate[], dtvariates, intvariates, headerpath)
 end
 
 function Base.getindex(df::AbstractDataFrame, name::String)
@@ -600,5 +601,67 @@ function Base.eltype(x::AbstractIntVariate{T}) where {T<:Signed}
     T
 end
 
+function Base.filter(selector::AbstractBoolVariate, dataframe::DataFrame)
+    headerpath = dataframe.headerpath
+    selectorname = getname(selector)
+    outtempfolder = joinpath(normpath(joinpath(dirname(headerpath), "..")), randstring(10))
+    outfolder = joinpath(normpath(joinpath(dirname(headerpath), "..")), selectorname)
+    mkpath(outtempfolder)
+    headerjson = open(headerpath) do f 
+        readstring(f)
+    end
+    header = JSON.parse(headerjson) 
+    datacols = header["datacolumns"]
+    selector = convert(BitArray{1}, selector)
+    for datacol in datacols
+        datatype = datacol["datatype"]
+        len = datacol["length"]
+        name = datacol["name"]
+        datpath = joinpath(dirname(headerpath), datacol["filename"])
+        newfilename = "$(randstring(10)).dat"
+        outdatpath = joinpath(outtempfolder, newfilename)
 
+        T = 
+            if datatype == "Float32"
+                Float32
+            elseif datatype == "Float64"
+                    Float64
+            elseif datatype == "Int32"
+                Int32
+            elseif datatype == "DateTime"
+                Int64
+            elseif datatype == "UInt8"
+                UInt8
+            elseif datatype == "UInt16"
+                UInt16
+            else 
+                UInt32
+            end
+        data = Vector{T}(len)
+        open(datpath) do f
+            read!(f, data)
+        end
+        seldata = data[selector]
+        open(outdatpath, "a") do f
+            @inbounds for i in 1:(length(seldata))
+                write(f, seldata[i])
+            end
+        end
+        datacol["length"] = length(seldata)
+        datacol["filename"] = newfilename
+    end
+    
+    newheader = DataHeader([DataColumnInfo(x["name"], x["length"], x["filename"], x["datatype"], [string(level) for level in x["levels"]]) for x in datacols])
+    newheaderjson = JSON.json(newheader)
+    newheaderpath = joinpath(outtempfolder, "header.txt")
+    open(newheaderpath, "a") do f
+        write(f, newheaderjson)
+    end
+    mv(outtempfolder, outfolder; remove_destination = true)   
+end
+
+function clearjumltmpdir()
+    tmpjuml = joinpath(tempdir(), JUMLDIR)
+    rm(tmpjuml; force = true, recursive = true)
+end
 

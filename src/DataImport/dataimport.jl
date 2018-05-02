@@ -51,7 +51,7 @@ function CatImporter(colname::AbstractString, colindex::Int64, filepath::String,
     CatImporter(colname, colindex, filepath, len, Dict{SubString{String}, Int64}(MISSINGLEVEL => 0), Dict{Int64, SubString{String}}(0 => MISSINGLEVEL), Dict{SubString{String}, Int64}(), isdropped, isnumeric, isdatetime, isinteger, nas, 8)
 end
 
-struct DataColumnInfo
+mutable struct DataColumnInfo
     name::AbstractString
     length::Int64
     filename::String

@@ -79,6 +79,19 @@ function fold(f::Function, init, xs::ConsSeq{T}) where {T}
     acc
 end
 
+function iter(f::Function, xs::ConsSeq{T}) where {T}
+    eof = false
+    tail = xs
+    while !eof
+        v, tail = tryread(tail)
+        if isnull(v)
+            eof = true
+        else
+            f(get(v))
+        end
+    end
+end
+
 Iterators.take(xs::EmptySeq{T}, n::Integer) where {T} = EmptySeq{T}()
 
 function Iterators.take(xs::ConsSeq{T}, n::Integer) where {T}
