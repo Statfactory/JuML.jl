@@ -1,9 +1,9 @@
-mutable struct FileCachedFactor{T<:Unsigned} <: AbstractFactor{T}
+mutable struct FileCachedFactor{T<:Unsigned, S<:AbstractFactor{T}} <: AbstractFactor{T}
     cachepath::String
-    basefactor::AbstractFactor{T}
+    basefactor::S
     lockobj::Threads.TatasLock
 
-    FileCachedFactor{T}(cachepath, basefactor, lockobj) where {T<:Unsigned} = (res = new(cachepath, basefactor, lockobj); finalizer(res, x -> rm(x.cachepath; force = true)); res)
+    FileCachedFactor{T, S}(cachepath, basefactor, lockobj) where {S<:AbstractFactor{T}} where {T<:Unsigned} = (res = new(cachepath, basefactor, lockobj); finalizer(res, x -> rm(x.cachepath; force = true)); res)
 end
 
 Base.length(var::FileCachedFactor) = length(var.basefactor)
@@ -12,45 +12,45 @@ getname(var::FileCachedFactor) = getname(var.basefactor)
 
 getlevels(var::FileCachedFactor) = getlevels(var.basefactor)
 
-function FileCachedFactor(factor::AbstractFactor{T}) where {T<:Unsigned}
-    FileCachedFactor{T}("", factor, Threads.TatasLock()) 
+function FileCachedFactor(factor::S) where {S<:AbstractFactor{T}} where {T<:Unsigned}
+    FileCachedFactor{T, S}("", factor, Threads.TatasLock()) 
 end
 
-function filecache(basefactor::AbstractFactor{T}) where {T<:Unsigned}
-    FileCachedFactor{T}("", basefactor, Threads.TatasLock()) 
+function filecache(basefactor::S) where {S<:AbstractFactor{T}} where {T<:Unsigned}
+    FileCachedFactor{T, S}("", basefactor, Threads.TatasLock()) 
 end
 
-function slice(factor::FileCachedFactor{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:Unsigned}
+function slice(factor::FileCachedFactor{T, S}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:Unsigned} where {S<:Union{FileCachedFactor, CachedFactor, Factor, FileFactor}}
+    basefactor = factor.basefactor
+    slicelength = verifyslicelength(fromobs, toobs, slicelength)  
+    slice(basefactor, fromobs, toobs, slicelength)
+end
+
+function slice(factor::FileCachedFactor{T, S}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {S<:AbstractFactor{T}} where {T<:Unsigned}
     basefactor = factor.basefactor
     slicelength = verifyslicelength(fromobs, toobs, slicelength) 
-    if isa(basefactor, FileCachedFactor) || isa(basefactor, Factor) || isa(basefactor, CachedFactor)
-        slice(basefactor, fromobs, toobs, slicelength)
-    else
-        lockobj = factor.lockobj
-        lock(lockobj)
-        try
-            if !isfile(factor.cachepath)
-                slices = slice(basefactor, 1, length(basefactor), SLICELENGTH)
-                tmpjuml = joinpath(tempdir(), JUMLDIR)
-                mkpath(tmpjuml)
-                outdatpath = joinpath(tmpjuml, "$(randstring(10)).dat")
-                iter(slices) do slice
-                    open(outdatpath, "a") do f
-                        write(f, slice)
-                    end
-                end
-                factor.cachepath = outdatpath
+    lockobj = factor.lockobj
+    lock(lockobj)
+    try
+        if !isfile(factor.cachepath)
+            v = convert(Vector{T}, basefactor)
+            tmpjuml = joinpath(tempdir(), JUMLDIR)
+            mkpath(tmpjuml)
+            outdatpath = joinpath(tmpjuml, "$(randstring(10)).dat")
+            open(outdatpath, "w") do f
+                write(f, v)
             end
-        finally
-            unlock(lockobj)
+            factor.cachepath = outdatpath
         end
-        sizeT = sizeof(T)
-        iostream = open(factor.cachepath)
-        seek(iostream, sizeT * (fromobs - 1))
-        buffer = Vector{T}(slicelength)
-        map(Seq(Vector{T}, (buffer, iostream, fromobs, toobs, slicelength), nextdatachunk), SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}) do slice
-            view(slice, 1:length(slice))
-        end
+    finally
+        unlock(lockobj)
+    end
+    sizeT = sizeof(T)
+    iostream = open(factor.cachepath, "r")
+    seek(iostream, sizeT * (fromobs - 1))
+    buffer = Vector{T}(undef, slicelength)
+    map(Seq(Vector{T}, (buffer, iostream, fromobs, toobs, slicelength), nextdatachunk), SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}) do slice
+        view(slice, 1:length(slice))
     end
 end
 

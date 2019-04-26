@@ -17,7 +17,7 @@ function slice(covariate::ConstCovariate{T}, fromobs::Integer, toobs::Integer, s
         fromobs = max(1, fromobs)
         toobs = min(toobs, length(covariate))
         slicelength = verifyslicelength(fromobs, toobs, slicelength) 
-        buffer = Vector{T}(slicelength)
+        buffer = Vector{T}(undef, slicelength)
         fill!(buffer, covariate.value)
         map(Seq(Tuple{Int64, Int64}, (fromobs, toobs, slicelength), nextslice), SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}) do rng
             view(buffer, 1:(rng[2] - rng[1] + 1))

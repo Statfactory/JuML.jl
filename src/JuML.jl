@@ -22,7 +22,11 @@ export importcsv,
        cache,
        CovariateStats,
        FactorStats,
-       LevelStats
+       LevelStats,
+       tryread,
+       slice,
+       nextslice,
+       map
 
 include("const.jl")
 include("DataStructures/seq.jl")
@@ -55,6 +59,7 @@ include("Covariates/covariate.jl")
 include("Covariates/constcovariate.jl")
 include("Covariates/filecovariate.jl")
 include("Covariates/cachedcovariate.jl")
+include("Covariates/filecachedcovariate.jl")
 include("Covariates/transcovariate.jl")
 include("Covariates/trans2covariate.jl")
 include("Covariates/parsefactorcovariate.jl")
@@ -66,6 +71,7 @@ include("Covariates/randcovariate.jl")
 
 include("BoolVariates/boolvariate.jl")
 include("BoolVariates/cachedboolvariate.jl")
+include("BoolVariates/filecachedboolvariate.jl")
 include("BoolVariates/transboolvariate.jl")
 include("BoolVariates/trans2boolvariate.jl")
 include("BoolVariates/transcovboolvariate.jl")

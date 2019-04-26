@@ -16,7 +16,7 @@ function slice(covariate::RandCovariate, fromobs::Integer, toobs::Integer, slice
         fromobs = max(1, fromobs)
         toobs = min(toobs, length(covariate))
         slicelength = verifyslicelength(fromobs, toobs, slicelength) 
-        buffer = Vector{Float32}(slicelength)
+        buffer = Vector{Float32}(undef, slicelength)
         map(Seq(Tuple{Int64, Int64}, (fromobs, toobs, slicelength), nextslice), SubArray{Float32,1,Array{Float32,1},Tuple{UnitRange{Int64}},true}) do rng
             rand!(buffer)
             view(buffer, 1:(rng[2] - rng[1] + 1))

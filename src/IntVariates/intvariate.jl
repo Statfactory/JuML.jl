@@ -6,7 +6,7 @@ end
 Base.length(intvariate::IntVariate{T}) where {T<:Signed} = length(intvariate.data)
 
 function IntVariate{T}(name::String, length::Integer, datpath::String) where {T<:Signed}
-    data = Vector{T}(length)
+    data = Vector{T}(undef, length)
     open(datpath) do f
         read!(f, data)
     end

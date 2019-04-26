@@ -1,5 +1,5 @@
 mutable struct CachedFactor{T<:Unsigned} <: AbstractFactor{T}
-    cache::Nullable{Vector{T}}
+    cache::Union{Vector{T}, Nothing}
     basefactor::AbstractFactor{T}
     lockobj::Threads.TatasLock
 end
@@ -11,11 +11,11 @@ getname(var::CachedFactor) = getname(var.basefactor)
 getlevels(var::CachedFactor) = getlevels(var.basefactor)
 
 function CachedFactor(factor::AbstractFactor{T}) where {T<:Unsigned}
-    CachedFactor{T}(Nullable{Vector{T}}(), factor, Threads.TatasLock()) 
+    CachedFactor{T}(nothing, factor, Threads.TatasLock()) 
 end
 
 function cache(basefactor::AbstractFactor{T}) where {T<:Unsigned}
-    CachedFactor{T}(Nullable{Vector{T}}(), basefactor, Threads.TatasLock()) 
+    CachedFactor{T}(nothing, basefactor, Threads.TatasLock()) 
 end
 
 function slice(factor::CachedFactor{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:Unsigned}
@@ -27,22 +27,20 @@ function slice(factor::CachedFactor{T}, fromobs::Integer, toobs::Integer, slicel
         lockobj = factor.lockobj
         lock(lockobj)
         try
-            if isnull(factor.cache)
+            if factor.cache === nothing
                 slices = slice(basefactor, 1, length(basefactor), SLICELENGTH)
-                cachedata = Vector{T}(length(basefactor))
+                cachedata = Vector{T}(undef, length(basefactor))
                 fold(0, slices) do offset, slice
                     n = length(slice)
-                    @inbounds for i in 1:n
-                        cachedata[i + offset] = slice[i]
-                    end
+                    view(cachedata, (1 + offset):(n + offset)) .= slice
                     offset += n
                 end
-                factor.cache = Nullable{Vector{T}}(cachedata)
+                factor.cache = cachedata
             end
         finally
             unlock(lockobj)
         end
-        slice(get(factor.cache), fromobs, toobs, slicelength)
+        slice(factor.cache, fromobs, toobs, slicelength)
     end
 end
 

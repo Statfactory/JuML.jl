@@ -18,7 +18,7 @@ function Covariate(data::AbstractVector{T}) where {T<:Integer}
 end
 
 function Covariate{T}(name::String, length::Integer, datpath::String) where {T<:AbstractFloat}
-    data = Vector{T}(length)
+    data = Vector{T}(undef, length)
     open(datpath) do f
         read!(f, data)
     end

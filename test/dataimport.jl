@@ -1,4 +1,5 @@
-using Compat, Compat.Test
+push!(LOAD_PATH, joinpath(pwd(), "src"))
+using Test
 using JuML
 
 train1Mcsv = joinpath("data", "airlinetrain1m.csv")

@@ -7,7 +7,7 @@ end
 Base.length(factor::Factor{T}) where {T<:Unsigned} = length(factor.data)
 
 function Factor{T}(name::String, length::Integer, levels::Vector{String}, datpath::String) where {T<:Unsigned}
-    data = Vector{T}(length)
+    data = Vector{T}(undef, length)
     open(datpath) do f
         read!(f, data)
     end

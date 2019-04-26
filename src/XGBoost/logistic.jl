@@ -35,16 +35,17 @@ function xgblogit(label::AbstractCovariate{S}, factors::Vector{<:AbstractFactor}
                   trainselector::AbstractBoolVariate = BoolVariate("", BitArray{1}(0)), 
                   validselector::AbstractBoolVariate = BoolVariate("", BitArray{1}(0)),
                   μ::Real = 0.5, posweight::Real = 1.0, subsample::Real = 1.0,
-                  η::Real = 0.3, λ::Real = 1.0, γ::Real = 0.0, maxdepth::Integer = 6, nrounds::Integer = 2, ordstumps::Bool = false, pruning::Bool = false,
-                  minchildweight::Real = 1.0, caching::Bool = true, slicelength::Integer = 0, usefloat64::Bool = false, leafwise::Bool = false, maxleaves::Integer = 255,
+                  η::Real = 0.3, λ::Real = 1.0, γ::Real = 0.0, maxdepth::Integer = 6, nrounds::Integer = 2, ordstumps::Bool = false, optsplit::Bool = false, pruning::Bool = false,
+                  minchildweight::Real = 1.0, caching::Bool = true, filecaching::Bool = false, slicelength::Integer = 0, usefloat64::Bool = false, leafwise::Bool = false, maxleaves::Integer = 255,
                   singlethread::Bool = false) where {S<:AbstractFloat}
 
     T = usefloat64 ? Float64 : Float32
-    factors = caching ? map(cache, filter((f -> getname(f) != getname(label)), factors)) : filter((f -> getname(f) != getname(label)), factors)
-    label = caching ? cache(label) : label
+    factors = filter((f -> getname(f) != getname(label)), factors)
+    factors = caching ? map(cache, factors) : (filecaching ? map(filecache, factors) : factors)
+    label = caching ? cache(label) : (filecaching ? filecache(label) : label)
     slicelength = slicelength <= 0 ? length(label) : slicelength
-    trainselector = caching ? (trainselector |> cache) : trainselector
-    validselector = caching ? (validselector |> cache) : validselector
+    trainselector = caching ? (trainselector |> cache) : (filecaching ? filecache(trainselector) : trainselector)
+    validselector = caching ? (validselector |> cache) : (filecaching ? filecache(validselector) : validselector)
     λ = T(λ)
     γ = T(γ)
     η = T(η)
@@ -52,40 +53,31 @@ function xgblogit(label::AbstractCovariate{S}, factors::Vector{<:AbstractFactor}
     minchildweight = T(minchildweight)
     μ = T(μ)
     subsample = T(subsample)
-    f0 = Vector{T}(length(label))
+    f0 = Vector{T}(undef, length(label))
     if posweight == one(T)
         fill!(f0, T(logitraw(μ)))
     else
         fill!(f0, T(logitraw(μ, posweight)))
     end
     zerocov = ConstCovariate(zero(T), length(trainselector))
-    poswgtcov = ifelse(TransCovBoolVariate("", label, x -> x == one(S)), ConstCovariate(posweight, length(label)), ConstCovariate(one(S), length(label))) |> cache
+    poswgtcov = iif(TransCovBoolVariate("", label, x -> x == one(S)), ConstCovariate(posweight, length(label)), ConstCovariate(one(S), length(label))) |> cache
     fm, trees = fold((f0, Vector{XGTree}()), Seq(1:nrounds)) do x, m
         fm, trees = x
         ŷ = Covariate(sigmoid.(fm)) 
 
-        f = caching ? cache : identity
+        f = caching ? cache : (filecaching ? filecache : identity)
 
-        #trainselector = subsample == one(T) ? selector : (selector .& (TransCovBoolVariate("", RandCovariate(length(label)), x -> x .<= subsample)))
-
-        ∂𝑙 = length(trainselector) == 0 ? Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) |> f : ifelse(trainselector, Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙), zerocov)
-        ∂²𝑙 = length(trainselector) == 0 ? TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙) |> f : ifelse(trainselector, TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙), zerocov)
+        ∂𝑙 = length(trainselector) == 0 ? Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) : iif(trainselector, Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙), zerocov)
+        ∂²𝑙 = length(trainselector) == 0 ? TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙) : iif(trainselector, TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙), zerocov)
         if posweight != one(T)
             ∂𝑙 = Trans2Covariate(T, "∂𝑙", ∂𝑙, poswgtcov, *)
             ∂²𝑙 = Trans2Covariate(T, "∂²𝑙", ∂²𝑙, poswgtcov, *)
         end
-        ∂𝑙 = ∂𝑙 |> f
-        ∂²𝑙 = ∂²𝑙 |> f
 
-        tree, predraw = growtree(factors, ∂𝑙, ∂²𝑙, maxdepth, λ, γ, leafwise, maxleaves, minchildweight, ordstumps, pruning, slicelength, singlethread)
+        tree, predraw = growtree(factors, (∂𝑙 |> f), (∂²𝑙 |> f), maxdepth, λ, γ, leafwise, maxleaves, minchildweight, ordstumps, optsplit, pruning, slicelength, singlethread)
+        
         fm .= muladd.(η, predraw, fm)
         predraw .= sigmoid.(fm)
-        @show m
-        if length(trainselector) > 0
-            @show trainauc, testauc = getauc(predraw, label, trainselector, validselector; slicelength = slicelength)
-        else
-            @show auc = getauc(predraw, label; slicelength = slicelength)
-        end
         push!(trees, tree)
         (fm, trees)
     end
@@ -95,20 +87,20 @@ end
 
 function cvxgblogit(label::AbstractCovariate, factors::Vector{<:AbstractFactor}, nfolds::Integer;
                     aucmetric::Bool = true, loglossmetric::Bool = true, trainmetric::Bool = false, μ::Real = 0.5,
-                    η::Real = 0.3, λ::Real = 1.0, γ::Real = 0.0, maxdepth::Integer = 6, nrounds::Integer = 2, ordstumps::Bool = false, pruning::Bool = true,
+                    η::Real = 0.3, λ::Real = 1.0, γ::Real = 0.0, maxdepth::Integer = 6, nrounds::Integer = 2, ordstumps::Bool = false, optsplit::Bool = false, pruning::Bool = true,
                     minchildweight::Real = 1.0, caching::Bool = true, slicelength::Integer = 0, usefloat64::Bool = false,
                     singlethread::Bool = false)
 
     cvfolds = getnfolds(nfolds, false, length(label))
-    trainaucfold = Vector{Float64}(nfolds)
-    trainloglossfold = Vector{Float64}(nfolds)
-    testaucfold = Vector{Float64}(nfolds)
-    testloglossfold = Vector{Float64}(nfolds)
+    trainaucfold = Vector{Float64}(undef, nfolds)
+    trainloglossfold = Vector{Float64}(undef, nfolds)
+    testaucfold = Vector{Float64}(undef, nfolds)
+    testloglossfold = Vector{Float64}(undef, nfolds)
     for i in 1:nfolds
         trainselector = cvfolds .!= UInt8(i)
         testselector = cvfolds .== UInt8(i)
         model = xgblogit(label, factors; selector = BoolVariate("", trainselector), η = η, λ = λ, γ = γ, μ = μ, maxdepth = maxdepth,
-                         nrounds = nrounds, ordstumps = ordstumps, pruning = pruning, minchildweight = minchildweight,
+                         nrounds = nrounds, ordstumps = ordstumps, optsplit = optsplit, pruning = pruning, minchildweight = minchildweight,
                          caching = caching, slicelength = slicelength, usefloat64 = usefloat64, singlethread = singlethread)
         if aucmetric
             testaucfold[i] = getauc(model.pred, label; selector = testselector)
@@ -148,7 +140,7 @@ function predict(model::XGModel{T}, dataframe::AbstractDataFrame; μ::Real = 0.5
     μ = T(μ)
     posweight = T(posweight)
     η = model.η
-    f0 = Vector{T}(length(dataframe))
+    f0 = Vector{T}(undef, length(dataframe))
     if posweight == one(T)
         fill!(f0, T(logitraw(μ)))
     else

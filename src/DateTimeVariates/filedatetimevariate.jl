@@ -11,7 +11,7 @@ function slice(dtvar::FileDateTimeVariate, fromobs::Integer, toobs::Integer, sli
     sizeT = sizeof(Int64)
     iostream = open(dtvar.datapath)
     seek(iostream, sizeT * (fromobs - 1))
-    buffer = Vector{Int64}(slicelength)
+    buffer = Vector{Int64}(undef, slicelength)
     map(Seq(Vector{Int64}, (buffer, iostream, fromobs, toobs, slicelength), nextdatachunk), SubArray{Int64,1,Array{Int64,1},Tuple{UnitRange{Int64}},true}) do slice
         view(slice, 1:length(slice))
     end

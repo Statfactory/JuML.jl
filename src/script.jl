@@ -1,13 +1,37 @@
-push!(LOAD_PATH, "C:\\Users\\adamm\\Dropbox\\Development\\JuML\\src")
-using JuML
+push!(LOAD_PATH, joinpath(pwd(), "src"))
 
-importcsv("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetrain.csv")
+using JuML
+using Pkg
+
+#fannie headers:
+colnames = ["loan_id", "monthly_rpt_prd", "servicer_name", "last_rt", "last_upb", "loan_age",
+    "months_to_legal_mat" , "adj_month_to_mat", "maturity_date", "msa", "delq_status",
+    "mod_flag", "zero_bal_code", "zb_dte", "lpi_dte", "fcc_dte","disp_dt", "fcc_cost",
+    "pp_cost", "ar_cost", "ie_cost", "tax_cost", "ns_procs", "ce_procs", "rmw_procs",
+    "o_procs", "non_int_upb", "prin_forg_upb_fhfa", "repch_flag", "prin_forg_upb_oth",
+    "transfer_flg"]
+
+importcsv("E:\\FannieMae\\Performance_All\\Performance_2017Q4.txt"; sep = "|", colnames = colnames,
+           isinteger = ((colname, freq) -> colname == "loan_id"), 
+           isdatetime = ((colname, freq) ->
+                            if colname == "monthly_rpt_prd" || colname == "lpi_dte" || colname == "fcc_dte" || colname == "disp_dt"
+                                true, "mm/dd/yyyy"
+                            elseif colname == "maturity_date" || colname == "zb_dte"
+                                true, "mm/yyyy"
+                            else
+                                false, ""
+                            end
+                        ));
+
+fannie_df = DataFrame("E:\\FannieMae\\Performance_All\\Performance_2017Q4"; preload = false)
+v = fannie_df["loan_id"]
+s = summary(fannie_df["zb_dte"])
 
 importcsv("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetest.csv")
 
 importcsv("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetrain.csv", path2 = "C:\\Users\\adamm_000\\Documents\\Julia\\airlinetest.csv")
 
-train_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetrain") # note we are passing a path to a folder
+train_df = DataFrame("C:\\Users\\adamm\\Documents\\Julia\\airlinetrain1m") # note we are passing a path to a folder
 test_df = DataFrame("C:\\Users\\adamm_000\\Documents\\Julia\\airlinetest") 
 traintest_df = DataFrame("C:\\Users\\adamm\\Documents\\Julia\\airlinetrainairlinetest") 
 

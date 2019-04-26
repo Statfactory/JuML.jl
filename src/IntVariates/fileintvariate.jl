@@ -11,7 +11,7 @@ function slice(intvariate::FileIntVariate{T}, fromobs::Integer, toobs::Integer, 
     sizeT = sizeof(T)
     iostream = open(intvariate.datapath)
     seek(iostream, sizeT * (fromobs - 1))
-    buffer = Vector{T}(slicelength)
+    buffer = Vector{T}(undef, slicelength)
     map(Seq(Vector{T}, (buffer, iostream, fromobs, toobs, slicelength), nextdatachunk), SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}) do slice
         view(slice, 1:length(slice))
     end

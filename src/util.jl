@@ -2,9 +2,9 @@ function nextslice(ind::Tuple{Int64, Int64, Int64})
     fromobs, toobs, slicelength = ind
     sliceend = min(toobs, fromobs + slicelength - 1)
     if fromobs <= sliceend
-        Nullable((fromobs, sliceend)), (sliceend + 1, toobs, slicelength)
+        ((fromobs, sliceend)::Union{Tuple{Int64, Int64}, Nothing}), (sliceend + 1, toobs, slicelength)
     else
-        Nullable{Tuple{Int64, Int64}}(), ind
+        nothing, ind
     end
 end
 
@@ -13,20 +13,20 @@ function nextdatachunk(state::Tuple{Vector{T}, IOStream, Integer, Integer, Integ
     slicelength = verifyslicelength(fromobs, toobs, slicelength) 
     if eof(iostream) || slicelength == 0
         close(iostream)
-        Nullable{Vector{T}}(), state
+        nothing, state
     else
         buffer = resize!(buffer, slicelength)
         read!(iostream, buffer)
-        Nullable{Vector{T}}(buffer), (buffer, iostream, fromobs + slicelength, toobs, slicelength)
+        (buffer::Union{Vector{T}, Nothing}), (buffer, iostream, fromobs + slicelength, toobs, slicelength)
     end
 end
 
 function nextline(iostream::IOStream)
     if eof(iostream)
         close(iostream)
-        Nullable{String}(), iostream
+        nothing, iostream
     else
-        Nullable{String}(readline(iostream)), iostream
+        (readline(iostream)::Union{String, Nothing}), iostream
     end
 end
 
@@ -42,8 +42,7 @@ function slice(data::BitArray{1}, fromobs::Integer, toobs::Integer, slicelength:
         toobs = min(toobs, length(data))
         slicelength = verifyslicelength(fromobs, toobs, slicelength)
         map(Seq(Tuple{Int64, Int64}, (fromobs, toobs, slicelength), nextslice), SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}) do rng
-                from, to = rng
-                view(data, from:to)
+                view(data, rng[1]:rng[2])
         end
     end
 end
@@ -56,8 +55,7 @@ function slice(data::Vector{T}, fromobs::Integer, toobs::Integer, slicelength::I
         toobs = min(toobs, length(data))
         slicelength = verifyslicelength(fromobs, toobs, slicelength)
         map(Seq(Tuple{Int64, Int64}, (fromobs, toobs, slicelength), nextslice), SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}) do rng
-                from, to = rng
-                view(data, from:to)
+                view(data, rng[1]:rng[2])
         end
     end
 end
@@ -70,8 +68,7 @@ function slice(data::SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}, from
         toobs = min(toobs, length(data))
         slicelength = verifyslicelength(fromobs, toobs, slicelength)
         map(Seq(Tuple{Int64, Int64}, (fromobs, toobs, slicelength), nextslice), SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}) do rng
-                from, to = rng
-                view(data, from:to)
+                view(data, rng[1]:rng[2])
         end
     end
 end
@@ -84,8 +81,7 @@ function slice(data::SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}, 
         toobs = min(toobs, length(data))
         slicelength = verifyslicelength(fromobs, toobs, slicelength)
         map(Seq(Tuple{Int64, Int64}, (fromobs, toobs, slicelength), nextslice), SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}) do rng
-                from, to = rng
-                view(data, from:to)
+                view(data, rng[1]:rng[2])
         end
     end
 end
@@ -100,14 +96,14 @@ end
 
 function mapslice(f::Function, slices::ConsSeq{SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}}, slicelength::Integer, ::Type{S}) where {S}
     if S == Bool
-        buffer = BitArray{1}(slicelength)
+        buffer = BitArray{1}(undef, slicelength)
         map(slices, SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}) do slice
             v = view(buffer, 1:length(slice))
             v .= f.(slice)
             return v
         end  
     else
-        buffer = Vector{S}(slicelength)
+        buffer = Vector{S}(undef, slicelength)
         map(slices, SubArray{S,1,Array{S,1},Tuple{UnitRange{Int64}},true}) do slice
             v = view(buffer, 1:length(slice))
             v .= f.(slice)
@@ -122,14 +118,14 @@ end
 
 function mapslice(f::Function, slices::ConsSeq{SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}}, slicelength::Integer, ::Type{S}) where {T} where {S}
     if S == Bool
-        buffer = BitArray{1}(slicelength)
+        buffer = BitArray{1}(undef, slicelength)
         map(slices, SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}) do slice
             v = view(buffer, 1:length(slice))
             v .= f.(slice)
             return v
         end  
     else
-        buffer = Vector{S}(slicelength)
+        buffer = Vector{S}(undef, slicelength)
         map(slices, SubArray{S,1,Array{S,1},Tuple{UnitRange{Int64}},true}) do slice
             v = view(buffer, 1:length(slice))
             v .= f.(slice)
@@ -148,7 +144,7 @@ end
 
 function mapslice2(f::Function, slices::ConsSeq{Tuple{SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}, SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}}}, slicelength::Integer, ::Type{U}) where {U}
     if U == Bool
-        buffer = BitArray{1}(slicelength)
+        buffer = BitArray{1}(undef, slicelength)
         map(slices, SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}) do slice
             slice1, slice2 = slice
             v = view(buffer, 1:length(slice1))
@@ -156,7 +152,7 @@ function mapslice2(f::Function, slices::ConsSeq{Tuple{SubArray{Bool,1,BitArray{1
             return v
         end 
     else
-        buffer = Vector{U}(slicelength)
+        buffer = Vector{U}(undef, slicelength)
         map(slices, SubArray{U,1,Array{U,1},Tuple{UnitRange{Int64}},true}) do slice
             slice1, slice2 = slice
             v = view(buffer, 1:length(slice1))
@@ -172,7 +168,7 @@ end
 
 function mapslice2(f::Function, slices::ConsSeq{Tuple{SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}, SubArray{S,1,Array{S,1},Tuple{UnitRange{Int64}},true}}}, slicelength::Integer, ::Type{U}) where {T} where {S} where {U}
     if U == Bool
-        buffer = BitArray{1}(slicelength)
+        buffer = BitArray{1}(undef, slicelength)
         map(slices, SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}) do slice
             slice1, slice2 = slice
             v = view(buffer, 1:length(slice1))
@@ -180,7 +176,7 @@ function mapslice2(f::Function, slices::ConsSeq{Tuple{SubArray{T,1,Array{T,1},Tu
             return v
         end  
     else
-        buffer = Vector{U}(slicelength)
+        buffer = Vector{U}(undef, slicelength)
         map(slices, SubArray{U,1,Array{U,1},Tuple{UnitRange{Int64}},true}) do slice
             slice1, slice2 = slice
             v = view(buffer, 1:length(slice1))
@@ -195,7 +191,7 @@ function mapslice3(f::Function, slices::EmptySeq{Tuple{SubArray{Bool,1,BitArray{
 end
 
 function mapslice3(f::Function, slices::ConsSeq{Tuple{SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}, SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}, SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}}}, slicelength::Integer)
-    buffer = BitArray{1}(slicelength)
+    buffer = BitArray{1}(undef, slicelength)
     map(slices, SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}) do slice
         slice1, slice2, slice3 = slice
         v = view(buffer, 1:length(slice1))
@@ -209,7 +205,7 @@ function mapslice3(f::Function, slices::EmptySeq{Tuple{SubArray{Bool,1,BitArray{
 end
 
 function mapslice3(f::Function, slices::ConsSeq{Tuple{SubArray{Bool,1,BitArray{1},Tuple{UnitRange{Int64}},true}, SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}, SubArray{S,1,Array{S,1},Tuple{UnitRange{Int64}},true}}}, slicelength::Integer, ::Type{V}) where {T} where {S} where {V}
-    buffer = Vector{V}(slicelength)
+    buffer = Vector{V}(undef, slicelength)
     map(slices, SubArray{V,1,Array{V,1},Tuple{UnitRange{Int64}},true}) do slice
         slice1, slice2, slice3 = slice
         v = view(buffer, 1:length(slice1))
@@ -223,7 +219,7 @@ function mapslice3(f::Function, slices::EmptySeq{Tuple{SubArray{T,1,Array{T,1},T
 end
 
 function mapslice3(f::Function, slices::ConsSeq{Tuple{SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}, SubArray{S,1,Array{S,1},Tuple{UnitRange{Int64}},true}, SubArray{U,1,Array{U,1},Tuple{UnitRange{Int64}},true}}}, slicelength::Integer, ::Type{V}) where {T} where {S} where {U} where {V}
-    buffer = Vector{V}(slicelength)
+    buffer = Vector{V}(undef, slicelength)
     map(slices, SubArray{V,1,Array{V,1},Tuple{UnitRange{Int64}},true}) do slice
         slice1, slice2, slice3 = slice
         v = view(buffer, 1:length(slice1))
@@ -236,7 +232,7 @@ function getnfolds(n::Integer, stratified::Bool, len::Integer)
     n = UInt8(n)
     #len = length(label)
     perm = randperm(len)
-    res = Vector{UInt8}(len)
+    res = Vector{UInt8}(undef, len)
     if stratified 
         #stats = getstats(label)
 

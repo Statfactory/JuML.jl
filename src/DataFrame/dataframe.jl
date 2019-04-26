@@ -1,4 +1,5 @@
 import JSON
+using Printf
 
 abstract type AbstractDataFrame end
 
@@ -85,7 +86,7 @@ function DataFrame(path::String; preload::Bool = true)
     path = abspath(path)
     headerpath = isfile(path) ? path : joinpath(path, "header.txt")
     headerjson = open(headerpath) do f 
-        readstring(f)
+        read(f, String)
     end
     header = JSON.parse(headerjson)
     factors = Vector{AbstractFactor}()
@@ -116,11 +117,11 @@ function DataFrame(path::String; preload::Bool = true)
             end
         end
 
-        if datatype == "Int32"
+        if datatype == "Int64"
             if preload
-                push!(intvariates, IntVariate{Int32}(name, len, datpath))
+                push!(intvariates, IntVariate{Int64}(name, len, datpath))
             else
-                push!(intvariates, FileIntVariate{Int32}(name, len, datpath))
+                push!(intvariates, FileIntVariate{Int64}(name, len, datpath))
             end
         end
 
@@ -417,8 +418,8 @@ function Base.show(io::IO, covariate::AbstractCovariate{T}) where {T<:AbstractFl
     slices = slice(covariate, 1, HEADLENGTH, HEADLENGTH)
     slice1, _ = tryread(slices)
     len = length(covariate)
-    if !isnull(slice1)
-        datahead = join([isnan(v) ? "." : string(v) for v in get(slice1)], " ")
+    if slice1 !== nothing
+        datahead = join([isnan(v) ? "." : string(v) for v in slice1], " ")
         dataend = len > HEADLENGTH ? "  ..." : ""
         println(io, "Covariate $(getname(covariate)) with $(len) obs: $(datahead)$dataend")
     else
@@ -430,8 +431,8 @@ function Base.show(io::IO, intvariate::AbstractIntVariate{T}) where {T<:Signed}
     slices = slice(intvariate, 1, HEADLENGTH, HEADLENGTH)
     slice1, _ = tryread(slices)
     len = length(intvariate)
-    if !isnull(slice1)
-        datahead = join([v == typemin(T) ? "." : string(v) for v in get(slice1)], " ")
+    if slice1 !== nothing
+        datahead = join([v == typemin(T) ? "." : string(v) for v in slice1], " ")
         dataend = len > HEADLENGTH ? "  ..." : ""
         println(io, "IntVariate $(getname(intvariate)) with $(len) obs: $(datahead)$dataend")
     else
@@ -443,8 +444,8 @@ function Base.show(io::IO, boolvar::AbstractBoolVariate)
     slices = slice(boolvar, 1, HEADLENGTH, HEADLENGTH)
     slice1, _ = tryread(slices)
     len = length(boolvar)
-    if !isnull(slice1)
-        datahead = join([string(v) for v in get(slice1)], " ")
+    if slice1 !== nothing
+        datahead = join([string(v) for v in slice1], " ")
         dataend = len > HEADLENGTH ? "  ..." : ""
         println(io, "BoolVar $(getname(boolvar)) with $(len) obs: $(datahead)$dataend")
     else
@@ -456,8 +457,8 @@ function Base.show(io::IO, datetimevar::AbstractDateTimeVariate)
     slices = slice(datetimevar, 1, HEADLENGTH, HEADLENGTH)
     slice1, _ = tryread(slices)
     len = length(datetimevar)
-    if !isnull(slice1)
-        datahead = join([v == zero(Int64) ? MISSINGLEVEL : string(Dates.epochms2datetime(v)) for v in get(slice1)], " ")
+    if slice1 !== nothing
+        datahead = join([v == zero(Int64) ? MISSINGLEVEL : string(Dates.epochms2datetime(v)) for v in slice1], " ")
         dataend = len > HEADLENGTH ? "  ..." : ""
         println(io, "DateTimeVar $(getname(datetimevar)) with $(len) obs: $(datahead)$dataend")
     else
@@ -471,8 +472,8 @@ function Base.show(io::IO, factor::AbstractFactor{T}) where {T<:Unsigned}
     len = length(factor)
     levels = getlevels(factor)
     levelcount = length(levels)
-    if !isnull(slice1)
-        datahead = join([index == 0 ? MISSINGLEVEL : levels[index] for index in get(slice1)], " ")
+    if slice1 !== nothing
+        datahead = join([index == 0 ? MISSINGLEVEL : levels[index] for index in slice1], " ")
         dataend = len > HEADLENGTH ? "  ..." : ""
         println(io, "Factor $(getname(factor)) with $(len) obs and $(levelcount) levels: $(datahead)$dataend")
     else
@@ -482,12 +483,10 @@ end
 
 function Base.convert(::Type{Vector{T}}, factor::AbstractFactor{T}) where {T<:Unsigned}
     slices = slice(factor, 1, length(factor), SLICELENGTH)
-    data = Vector{T}(length(factor))
+    data = Vector{T}(undef, length(factor))
     fold(0, slices) do offset, slice
         n = length(slice)
-        @inbounds for i in 1:n
-            data[i + offset] = slice[i]
-        end
+        view(data, (1 + offset):(n + offset)) .= slice
         offset += n
     end
     data
@@ -495,12 +494,10 @@ end
 
 function Base.convert(::Type{Vector{T}}, covariate::AbstractCovariate{T}) where {T<:AbstractFloat}
     slices = slice(covariate, 1, length(covariate), SLICELENGTH)
-    data = Vector{T}(length(covariate))
+    data = Vector{T}(undef, length(covariate))
     fold(0, slices) do offset, slice
         n = length(slice)
-        @inbounds for i in 1:n
-            data[i + offset] = slice[i]
-        end
+        view(data, (1 + offset):(n + offset)) .= slice
         offset += n
     end
     data
@@ -508,12 +505,10 @@ end
 
 function Base.convert(::Type{Vector{Int64}}, datetimevariate::AbstractDateTimeVariate) 
     slices = slice(datetimevariate, 1, length(datetimevariate), SLICELENGTH)
-    data = Vector{Int64}(length(datetimevariate))
+    data = Vector{Int64}(undef, length(datetimevariate))
     fold(0, slices) do offset, slice
         n = length(slice)
-        @inbounds for i in 1:n
-            data[i + offset] = slice[i]
-        end
+        view(data, (1 + offset):(n + offset)) .= slice
         offset += n
     end
     data
@@ -524,9 +519,18 @@ function Base.convert(::Type{BitArray{1}}, boolvariate::AbstractBoolVariate)
     data = BitArray{1}(length(boolvariate))
     fold(0, slices) do offset, slice
         n = length(slice)
-        @inbounds for i in 1:n
-            data[i + offset] = slice[i]
-        end
+        view(data, (1 + offset):(n + offset)) .= slice
+        offset += n
+    end
+    data
+end
+
+function Base.convert(::Type{Vector{Bool}}, boolvariate::AbstractBoolVariate) 
+    slices = slice(boolvariate, 1, length(boolvariate), SLICELENGTH)
+    data = Vector{Bool}(undef, length(boolvariate))
+    fold(0, slices) do offset, slice
+        n = length(slice)
+        view(data, (1 + offset):(n + offset)) .= slice
         offset += n
     end
     data
@@ -637,7 +641,7 @@ function Base.filter(selector::AbstractBoolVariate, dataframe::DataFrame)
             else 
                 UInt32
             end
-        data = Vector{T}(len)
+        data = Vector{T}(undef, len)
         open(datpath) do f
             read!(f, data)
         end

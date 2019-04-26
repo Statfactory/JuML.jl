@@ -13,30 +13,37 @@ function Seq(::Type{T}, state, next::Function) where {T}
 end
 
 function Seq(::Type{T}, iter) where {T}
-    ConsSeq{T}( () -> (start(iter), 
-                       state -> done(iter, state) ?
-                       (Nullable{T}(), state) :
+    ConsSeq{T}( () -> (
                        begin
-                           v, newstate = next(iter, state)
-                           Nullable{T}(v), newstate
-                       end))
+                           nothing, state ->
+                           begin
+                               res = (state === nothing) ? iterate(iter) : iterate(iter, state)
+                               if res === nothing
+                                   (nothing::Union{T, Nothing}), state
+                               else
+                                   v, newstate = res
+                                   (v::Union{T, Nothing}), newstate
+                               end
+                           end
+                       end
+              ))
 end
 
 function Base.eltype(x::Seq{T}) where {T}
     T
 end
 
-function Seq(range::Range{T}) where {T}
+function Seq(range::AbstractRange{T}) where {T}
     Seq(T, range)
 end
 
-tryread(s::EmptySeq{T}) where {T} = Nullable{T}(), EmptySeq{T}()
+tryread(s::EmptySeq{T}) where {T} = nothing, EmptySeq{T}()
 
 function tryread(xs::ConsSeq{T}) where {T} 
     state, next = xs.genfun()
     v, newstate = next(state)
-    if isnull(v)
-        Nullable{T}(), EmptySeq{T}()
+    if v === nothing
+        nothing, EmptySeq{T}()
     else
         v, ConsSeq{T}(() -> (newstate, next))
     end
@@ -52,7 +59,11 @@ function Base.map(f::Function, xs::ConsSeq{T}, ::Type{S}) where {T, S}
                     state, next = xs.genfun()
                     state, s -> begin
                                     v, newstate = next(s)
-                                    map(f, v), newstate
+                                    if v === nothing
+                                        nothing, s
+                                    else
+                                        f(v), newstate
+                                    end
                                 end
                 end
               )
@@ -70,10 +81,10 @@ function fold(f::Function, init, xs::ConsSeq{T}) where {T}
     tail = xs
     while !eof
         v, tail = tryread(tail)
-        if isnull(v)
+        if v === nothing
             eof = true
         else
-            acc = f(acc, get(v))
+            acc = f(acc, v)
         end
     end
     acc
@@ -84,10 +95,10 @@ function iter(f::Function, xs::ConsSeq{T}) where {T}
     tail = xs
     while !eof
         v, tail = tryread(tail)
-        if isnull(v)
+        if v === nothing
             eof = true
         else
-            f(get(v))
+            f(v)
         end
     end
 end
@@ -105,7 +116,7 @@ function Iterators.take(xs::ConsSeq{T}, n::Integer) where {T}
                                                 v, newstate = next(state)
                                                 v, (newstate, n - 1)
                                              else
-                                                 Nullable{T}(), state
+                                                 nothing, state
                                              end
                                     end
                     end
@@ -121,21 +132,21 @@ function chunkbysize(xs::ConsSeq{T}, n::Integer) where {T}
         begin
             state, next = xs.genfun()
             state, s -> begin
-                            chunk = Vector{T}(n)
+                            chunk = Vector{T}(undef, n)
                             newstate = s
                             for k in 1:n
                                 v, newstate = next(newstate)
-                                if !isnull(v)
-                                    chunk[k] = get(v)
+                                if v !== nothing
+                                    chunk[k] = v
                                 else
                                     resize!(chunk, k - 1)
                                     break
                                 end
                             end
                             if length(chunk) == 0
-                                Nullable{Vector{T}}(), newstate
+                                nothing, newstate
                             else
-                                Nullable{Vector{T}}(chunk), newstate
+                                (chunk::Union{Vector{T}, Nothing}), newstate
                             end
                         end
         end)
@@ -157,11 +168,11 @@ function Base.zip(xs::NTuple{N, ConsSeq}) where {N}
                 begin
                     res = map((x -> x[2](x[1])), zip(sarg, next))
                     newstate = map((x -> x[2]), res)
-                    if all([!isnull(a) for (a, b) in res])
-                        v = map((x -> get(x[1])), res)
-                        Nullable{Tuple{eltypes...}}(Tuple(v)), newstate
+                    if all([a !== nothing for (a, b) in res])
+                        v = map((x -> x[1]), res)
+                        (Tuple(v)::Union{Tuple{eltypes...}, Nothing}), newstate
                     else
-                        Nullable{Tuple{eltypes...}}(), newstate
+                        nothing, newstate
                     end
                 end
         end
@@ -181,10 +192,10 @@ function Base.foreach(f::Function, xs::Seq{T}) where {T}
     tail = xs
     while !eof
         v, tail = tryread(tail)
-        if isnull(v)
+        if v === nothing
             eof = true
         else
-            f(get(v))
+            f(v)
         end
     end   
 end
@@ -195,10 +206,10 @@ function Base.collect(xs::Seq{T}) where {T}
     tail = xs
     while !eof
         v, tail = tryread(tail)
-        if isnull(v)
+        if v === nothing
             eof = true
         else
-            push!(res, get(v))
+            push!(res, v)
         end
     end  
     res
@@ -221,15 +232,15 @@ function concat(xs::ConsSeq{T}, ys::ConsSeq{T}) where {T}
                     begin
                         _statex, _statey = s
                         x, newstatex = nextx(_statex) 
-                        if isnull(x)
+                        if x === nothing
                             y, newstatey = nexty(_statey) 
-                            if isnull(y)
-                                Nullable{T}(), (newstatex, newstatey)
+                            if y === nothing
+                                nothing, (newstatex, newstatey)
                             else
-                                Nullable{T}(get(y)), (newstatex, newstatey)
+                                (y::Union{T, Nothing}), (newstatex, newstatey)
                             end
                         else
-                            Nullable{T}(get(x)), (newstatex, _statey)
+                            (x::Union{T, Nothing}), (newstatex, _statey)
                         end
                     end
             end

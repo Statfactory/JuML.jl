@@ -27,6 +27,6 @@ function slice(cov::IfElseCovariate{S, T, U}, fromobs::Integer, toobs::Integer, 
     mapslice3(f, slices, slicelength, U)
 end
 
-function Base.ifelse(ifboolvar::AbstractBoolVariate, truecovariate::AbstractCovariate{S}, falsecovariate::AbstractCovariate{T}) where {S<:AbstractFloat} where{T<:AbstractFloat}
+function iif(ifboolvar::AbstractBoolVariate, truecovariate::AbstractCovariate{S}, falsecovariate::AbstractCovariate{T}) where {S<:AbstractFloat} where{T<:AbstractFloat}
     IfElseCovariate("$(getname(ifboolvar))?$(getname(truecovariate)):$(getname(falsecovariate))", ifboolvar, truecovariate, falsecovariate)
 end

@@ -20,7 +20,7 @@ end
 
 function slice(cov::ParseFactorCovariate{S, T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {S<:Unsigned} where {T<:AbstractFloat}
     levels = getlevels(cov.basefactor)
-    parsed = Vector{T}(length(levels) + 1)
+    parsed = Vector{T}(undef, length(levels) + 1)
     for (index, level) in enumerate(levels)
         parsed[index + 1] = convert(T, cov.transform(level))
     end

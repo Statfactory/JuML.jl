@@ -10,7 +10,7 @@ function DateTimeVariate(data::AbstractVector{Int64})
 end
 
 function DateTimeVariate(name::String, length::Integer, datpath::String)
-    data = Vector{Int64}(length)
+    data = Vector{Int64}(undef, length)
     open(datpath) do f
         read!(f, data)
     end

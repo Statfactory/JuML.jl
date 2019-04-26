@@ -1,5 +1,5 @@
 mutable struct CachedCovariate{T<:AbstractFloat} <: AbstractCovariate{T}
-    cache::Nullable{Vector{T}}
+    cache::Union{Vector{T}, Nothing}
     basecovariate::AbstractCovariate{T}
     lockobj::Threads.TatasLock
 end
@@ -9,11 +9,11 @@ Base.length(var::CachedCovariate) = length(var.basecovariate)
 getname(var::CachedCovariate) = getname(var.basecovariate)
 
 function CachedCovariate(basecovariate::AbstractCovariate{T}) where {T<:AbstractFloat}
-    CachedCovariate{T}(Nullable{Vector{T}}(), basecovariate, Threads.TatasLock())  
+    CachedCovariate{T}(nothing, basecovariate, Threads.TatasLock())  
 end
 
 function cache(basecovariate::AbstractCovariate{T}) where {T<:AbstractFloat}
-    CachedCovariate{T}(Nullable{Vector{T}}(), basecovariate, Threads.TatasLock())  
+    CachedCovariate{T}(nothing, basecovariate, Threads.TatasLock())  
 end
 
 function slice(covariate::CachedCovariate{T}, fromobs::Integer, toobs::Integer, slicelength::Integer) where {T<:AbstractFloat}
@@ -25,22 +25,20 @@ function slice(covariate::CachedCovariate{T}, fromobs::Integer, toobs::Integer, 
         lockobj = covariate.lockobj
         lock(lockobj)
         try
-            if isnull(covariate.cache)
+            if covariate.cache === nothing
                 slices = slice(basecov, 1, length(basecov), SLICELENGTH)
-                cachedata = Vector{T}(length(basecov))
+                cachedata = Vector{T}(undef, length(basecov))
                 fold(0, slices) do offset, slice
                     n = length(slice)
-                    @inbounds for i in 1:n
-                        cachedata[i + offset] = slice[i]
-                    end
+                    view(cachedata, (1 + offset):(n + offset)) .= slice
                     offset += n
                 end
-                covariate.cache = Nullable{Vector{T}}(cachedata)
+                covariate.cache = cachedata
             end
         finally
             unlock(lockobj)
         end
-        slice(get(covariate.cache), fromobs, toobs, slicelength)
+        slice(covariate.cache, fromobs, toobs, slicelength)
     end
 end
 

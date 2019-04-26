@@ -1,7 +1,7 @@
 struct GroupStats{N, U, S} 
     keyvars::NTuple{N, StatVariate}
-    covariate::Nullable{AbstractCovariate}
-    selector::Nullable{AbstractBoolVariate}
+    covariate::Union{AbstractCovariate, Nothing}
+    selector::Union{AbstractBoolVariate, Nothing}
     stats::Dict{NTuple{N, U}, S}
 end
 
@@ -56,7 +56,7 @@ function getgroupstats(factors::NTuple{N, Union{AbstractFactor, AbstractIntVaria
             end
             d
         end
-        GroupStats{N, U, Int64}(factors, Nullable(), Nullable(), dict)
+        GroupStats{N, U, Int64}(factors, nothing, nothing, dict)
     else
         selslices = slice(selector, fromobs, toobs, slicelength)
         zipslices = zip(selslices, slices)
@@ -101,7 +101,7 @@ function getgroupstats(factors::NTuple{N, Union{AbstractFactor, AbstractIntVaria
             end
             d
         end
-        GroupStats{N, U, Int64}(factors, Nullable(), Nullable(selector), dict)
+        GroupStats{N, U, Int64}(factors, nothing, selector, dict)
     end
 end
 
@@ -298,7 +298,7 @@ function getgroupstats(cov::AbstractCovariate{S}, factors::NTuple{N, AbstractFac
         stats.mean = stats.sum / (stats.obscount - stats.nancount)
         stats.std = sqrt(((stats.sum2 - stats.sum * stats.sum / (stats.obscount - stats.nancount)) / (stats.obscount - stats.nancount - 1)))
     end
-    GroupStats{N, U, CovariateStats}(factors, Nullable(cov), Nullable(), dict)
+    GroupStats{N, U, CovariateStats}(factors, cov, nothing, dict)
 end
 
 function getgroupstats(cov::AbstractCovariate{S}, factors::AbstractFactor...; slicelength::Integer = SLICELENGTH) where {S<:AbstractFloat}

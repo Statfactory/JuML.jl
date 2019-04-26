@@ -28,7 +28,7 @@ function slice(covariate::GroupStatsCovariate{N, U, S, T}, fromobs::Integer, too
     slicelength = verifyslicelength(fromobs, toobs, slicelength) 
     zipslices = zip(map((v -> slice(v, fromobs, toobs, slicelength)), keyvars))
     f = covariate.transform
-    buffer = Vector{T}(slicelength)
+    buffer = Vector{T}(undef, slicelength)
     t = zero(T)
     u = zero(U)
     s = zero(S)

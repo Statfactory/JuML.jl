@@ -22,12 +22,8 @@ end
 
 mutable struct SplitNode{T<:AbstractFloat} <: TreeNode{T}
     factor::AbstractFactor
-    #leftpartition::LevelPartition
-    #rightpartition::LevelPartition
     leftnode::LeafNode{T}
     rightnode::LeafNode{T}
-    #leftgradient::LossGradient{T}
-    #rightgradient::LossGradient{T}
     loss::T
     isactive::Bool
     gain::T
@@ -59,6 +55,7 @@ mutable struct TreeGrowState{T<:AbstractFloat}
     γ::T
     min∂²𝑙::T
     ordstumps::Bool
+    optsplit::Bool
     pruning::Bool
     leafwise::Bool
     slicelength::Integer

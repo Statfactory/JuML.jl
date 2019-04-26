@@ -15,8 +15,8 @@ function slice(boolvar::GroupStatsBoolVariate, fromobs::Integer, toobs::Integer,
     groupstats = boolvar.groupstats
     subindexmap = covariate.groupstats.subindexmap
 
-    subind = Vector{Int64}(k)
-    buffer = BitArray{1}(slicelength)
+    subind = Vector{Int64}(undef, k)
+    buffer = BitArray{1}(undef, slicelength)
     nanstats = CovariateStats(0, 0, NaN64, NaN64, NaN64, NaN64, NaN64, NaN64, NaN64)
     map(factorslices, Bool) do slicevector
        len = length(slicevector[1])
