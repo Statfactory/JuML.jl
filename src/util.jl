@@ -30,6 +30,24 @@ function nextline(iostream::IOStream)
     end
 end
 
+function nextlines(state::Tuple{Vector{String}, IOStream, Integer}) 
+    buffer, iostream, maxlen = state
+    if eof(iostream)
+        close(iostream)
+        nothing, state
+    else
+        for i = 1:maxlen
+            line = readline(iostream)
+            buffer[i] = line
+            if eof(iostream) && i < maxlen
+                buffer = resize!(buffer, i)
+                break
+            end
+        end
+        (buffer::Union{Vector{String}, Nothing}), (buffer, iostream, maxlen)
+    end
+end
+
 function verifyslicelength(fromobs::Integer, toobs::Integer, slicelength::Integer)
     toobs < fromobs || slicelength <= 0 ? 0 : min(slicelength, toobs - fromobs + 1)
 end
