@@ -2,8 +2,10 @@ push!(LOAD_PATH, joinpath(pwd(), "src"))
 using JuML
 using Test
 
+traintest_df = DataFrame(joinpath("data", "airlinetraintest"); preload=true) 
+train_df = DataFrame(joinpath("data", "airlinetrain"); preload=true) 
+test_df = DataFrame(joinpath("data", "airlinetest")) 
 
-traintest_df = DataFrame(joinpath("data", "airlinetraintest")) 
 distance = traintest_df["Distance"]
 deptime = traintest_df["DepTime"]
 label = covariate(traintest_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)
@@ -15,29 +17,44 @@ factors = [traintest_df.factors; [deptime, distance]]
 trainsel = BoolVariate("trainsel", (1:1100000) .<= 1000000)
 validsel = BoolVariate("validsel", (1:1100000) .> 1000000)
 
-model1 = xgblogit(label, factors; trainselector = trainsel, validselector = validsel,  η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 1, ordstumps = false, pruning = false, caching = true, usefloat64 = true, singlethread = true, slicelength = 0);
+model1 = xgblogit(label, factors; trainselector = trainsel, validselector = validsel,  η = 1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 1, ordstumps = false, pruning = false, caching = true, usefloat64 = false, singlethread = true, slicelength = 0);
 _, testauc1 = getauc(model1.pred, label, trainsel, validsel)
 @test testauc1 ≈ 0.634631 atol = 0.0000001
 
-model2 = xgblogit(label, factors; trainselector = trainsel, validselector = validsel, η = 0.1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 2, maxdepth = 2, ordstumps = false, pruning = false, caching = true, usefloat64 = true, singlethread = true, slicelength = 0);
+model2 = xgblogit(label, factors; trainselector = trainsel, validselector = validsel, η = 0.1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 2, maxdepth = 2, ordstumps = false, pruning = false, caching = true, usefloat64 = false, singlethread = true, slicelength = 0);
 _, testauc2 = getauc(model2.pred, label, trainsel, validsel)
 @test testauc2 ≈ 0.6749474 atol = 0.0000001
 
-model3 = xgblogit(label, factors; trainselector = trainsel, validselector = validsel, η = 1, λ = 1.0, γ = 0.0, minchildweight = 1000.0, nrounds = 1, maxdepth = 6, ordstumps = false, pruning = false, caching = true, usefloat64 = true, singlethread = false, slicelength = 0);
+model3 = xgblogit(label, factors; trainselector = trainsel, validselector = validsel, η = 1, λ = 1.0, γ = 0.0, minchildweight = 1000.0, nrounds = 1, maxdepth = 6, ordstumps = false, pruning = false, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);
 _, testauc3 = getauc(model3.pred, label, trainsel, validsel)
 @test testauc3 ≈ 0.7002925 atol = 0.0000001
 
-model4 = xgblogit(label, factors; trainselector = trainsel, validselector = validsel, η = 1, λ = 1.0, γ = 500.0, minchildweight = 1.0, nrounds = 1, maxdepth = 4, ordstumps = false, pruning = false, caching = true, usefloat64 = true, singlethread = false, slicelength = 0);
+model4 = xgblogit(label, factors; trainselector = trainsel, validselector = validsel, η = 1, λ = 1.0, γ = 500.0, minchildweight = 1.0, nrounds = 1, maxdepth = 4, ordstumps = false, pruning = false, caching = true, usefloat64 = false, singlethread = false, slicelength = 0);
 _, testauc4 = getauc(model4.pred, label, trainsel, validsel)
-@test testauc4 ≈ 0.6888606 atol = 0.0000001
+@test testauc4 ≈ 0.6888606 atol = 0.0000001 
 
-model5 = xgblogit(label, factors; trainselector = trainsel, validselector = validsel, η = 0.1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 10, maxdepth = 10, ordstumps = false, pruning = false, caching = true, usefloat64 = true, singlethread = true, slicelength = 0);
+model5 = xgblogit(label, factors; trainselector = trainsel, validselector = validsel, η = 0.1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 10, maxdepth = 10, ordstumps = false, pruning = false, caching = true, usefloat64 = false, singlethread = true, slicelength = 0);
 _, testauc5 = getauc(model5.pred, label, trainsel, validsel)
 @test testauc5 ≈ 0.7255029 atol = 0.0002
 
-#model6 = xgblogit(label, factors; trainselector = trainsel, validselector = validsel,  η = 1, λ = 1.0, γ = 0.0, minchildweight = 0.0, nrounds = 1, maxdepth = 6, ordstumps = false, pruning = false, leafwise = true, maxleaves = 64, caching = true, usefloat64 = true, singlethread = false, slicelength = 0);
-#_, testauc6 = getauc(model6.pred, label, trainsel, validsel)
-#@test testauc6 ≈ 0.7004898 atol = 0.0000001
+@time model6 = xgblogit(label, factors; trainselector = trainsel, validselector = validsel, η = 0.1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 5, ordstumps = false, pruning = false, caching = false, usefloat64 = false, singlethread = true, slicelength = 0);
+print(model6.pred[1:20])
+trainauc6, testauc6 = getauc(model6.pred, label, trainsel, validsel)
+
+distance = train_df["Distance"]
+deptime = train_df["DepTime"]
+label = covariate(train_df["dep_delayed_15min"], level -> level == "Y" ? 1.0 : 0.0)
+deptime = factor(train_df["DepTime"])
+distance = factor(train_df["Distance"])
+
+factors = [train_df.factors; [deptime, distance]]
+
+@time model7 = xgblogit(label, factors; η = 0.1, λ = 1.0, γ = 0.0, minchildweight = 1.0, nrounds = 1, maxdepth = 5, ordstumps = false, pruning = false, caching = true, usefloat64 = false, singlethread = true, slicelength = 0);
+auc = getauc(model7.pred, label)
+model7.pred[1:5]
+p = predict(model7, test_df)
+@test model6.pred[1000001:end] ≈ p atol = 1e-15
+
 
 # XGBoost R script to compare:
 # Data:

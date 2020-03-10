@@ -59,8 +59,8 @@ function sumgradient(nodeids::Vector{<:Integer}, nodecansplit::Vector{Bool}, fac
 
     nthreads = singlethread ? 1 : Threads.nthreads()
     threadspace = map((x -> Int64(floor(x))), range(fromobs, toobs, length = nthreads + 1))
-    ∂𝑙sum = [[(nodecansplit[node] ? [zero(T) for i in 1:(levelcounts[node])] : Vector{T}()) for node in 1:nodecount] for i in 1:nthreads]
-    ∂²𝑙sum = [[(nodecansplit[node] ? [zero(T) for i in 1:(levelcounts[node])] : Vector{T}()) for node in 1:nodecount] for i in 1:nthreads]
+    ∂𝑙sum = [[(nodecansplit[node] ? [zero(Float64) for i in 1:(levelcounts[node])] : Vector{Float64}()) for node in 1:nodecount] for i in 1:nthreads]
+    ∂²𝑙sum = [[(nodecansplit[node] ? [zero(Float64) for i in 1:(levelcounts[node])] : Vector{Float64}()) for node in 1:nodecount] for i in 1:nthreads]
 
     if nthreads > 1
         Threads.@threads for i in 1:nthreads
@@ -276,12 +276,12 @@ function getsplitnode(factor::AbstractFactor, leafnode::LeafNode{T}, gradient::V
         end
     end
 
-    if count(rightpartition.mask) > 0 && split.loss < typemax(T)
+    if split.loss < typemax(T)
         split.gain = currloss - split.loss
         leftnode.partitions[factor] = leftpartition
-        leftnode.cansplit = leftnode.gradient.∂²𝑙 >= min∂²𝑙
+        leftnode.cansplit = true 
         rightnode.partitions[factor] = rightpartition
-        rightnode.cansplit = rightnode.gradient.∂²𝑙 >= min∂²𝑙
+        rightnode.cansplit = true 
         split
     else
         nothing
@@ -502,7 +502,7 @@ function getnewindices(fromfactor::AbstractFactor, tofactor::AbstractFactor)
     newind = Set{Int64}()
     for (i, level) in enumerate(tolevels)
         j = findfirst((x -> x == level), fromlevels)
-        if j !== nothing
+        if j === nothing
             push!(newind, i)
         end
     end
@@ -512,20 +512,42 @@ end
 function Base.map(node::SplitNode{T}, dataframe::AbstractDataFrame, 
                   factormap::Dict{AbstractFactor, Tuple{AbstractFactor, Dict{Int64, Int64}, Set{Int64}, Int64}}) where {T<:AbstractFloat}
     
+    leftdict = Dict{AbstractFactor, LevelPartition}()
+    rightdict = Dict{AbstractFactor, LevelPartition}()
+
+    for f in keys(node.leftnode.partitions)
+        if f in keys(factormap)
+            factor, levelmap, newind, levelcount = factormap[f]
+            leftmask = Vector{Bool}(undef, levelcount)
+            for (i, j) in levelmap
+                leftmask[j] = node.leftnode.partitions[f].mask[i] 
+            end
+            for i in newind
+                leftmask[i] = false
+            end
+            leftdict[factor] = LevelPartition(leftmask, node.leftnode.partitions[f].inclmissing)
+        end
+    end
+
+    for f in keys(node.rightnode.partitions)
+        if f in keys(factormap)
+            factor, levelmap, newind, levelcount = factormap[f]
+            rightmask = Vector{Bool}(undef, levelcount)
+            for (i, j) in levelmap
+                rightmask[j] = node.rightnode.partitions[f].mask[i] 
+            end
+            for i in newind
+                rightmask[i] = true
+            end
+            rightdict[factor] = LevelPartition(rightmask, node.rightnode.partitions[f].inclmissing)
+        end
+    end
+
+    leftnode = LeafNode(node.leftnode.gradient, node.leftnode.cansplit, leftdict)
+    rightnode = LeafNode(node.rightnode.gradient, node.rightnode.cansplit, rightdict)
+
     factor, levelmap, newind, levelcount = factormap[node.factor]
-    leftmask = Vector{Bool}(undef, levelcount)
-    rightmask = Vector{Bool}(undef, levelcount)
-    for (i, j) in levelmap
-        leftmask[j] = node.leftnode.partitions[node.factor].mask[i] 
-        rightmask[j] = node.rightnode.partitions[node.factor].mask[i] 
-    end
-    for i in newind
-        leftmask[i] = false
-        rightmask[i] = true
-    end
-    node.leftnode.partitions[factor] = LevelPartition(leftmask, node.leftnode.partitions[node.factor].inclmissing)
-    node.rightnode.partitions[factor] = LevelPartition(rightmask, node.rightnode.partitions[node.factor].inclmissing)
-    SplitNode{T}(factor, node.leftnode, node.rightnode, node.loss, node.isactive, node.gain)
+    SplitNode{T}(factor, leftnode, rightnode, node.loss, node.isactive, node.gain)
 end
 
 function Base.map(node::LeafNode{T}, dataframe::AbstractDataFrame,
@@ -552,11 +574,12 @@ function growtree(factors::Vector{<:AbstractFactor}, ∂𝑙covariate::AbstractC
     maxsteps = leafwise ? (maxleaves - 1) : maxdepth
     nodeids = maxnodecount <= typemax(UInt8) ? ones(UInt8, len) : (maxnodecount <= typemax(UInt16) ? ones(UInt16, len) : ones(UInt32, len))
     intercept = ConstFactor(len)
-    @time grad0 = sumgradient(nodeids, [true], intercept, [LevelPartition([true], false)], ∂𝑙covariate, ∂²𝑙covariate, slicelength, singlethread)[1][1]
+    grad0 = sumgradient(nodeids, [true], intercept, [LevelPartition([true], false)], ∂𝑙covariate, ∂²𝑙covariate, slicelength, singlethread)[1][2]
+    
     nodes0 = Vector{TreeNode{T}}()
     push!(nodes0, LeafNode{T}(grad0, true, Dict([f => LevelPartition(ones(Bool, length(getlevels(f))), true) for f in factors])))
     state0 = TreeGrowState{T}(nodeids, nodes0, factors, ∂𝑙covariate, ∂²𝑙covariate, λ, γ, min∂²𝑙, ordstumps, optsplit, pruning, leafwise, slicelength, singlethread)
-    @time layers = collect(Iterators.take(Seq(TreeLayer{T}, state0, nextlayer), maxsteps))
+    layers = collect(Iterators.take(Seq(TreeLayer{T}, state0, nextlayer), maxsteps))
     xgtree = XGTree{T}(layers, λ, γ, min∂²𝑙, maxdepth, leafwise, maxleaves, slicelength, singlethread)
     if pruning
         tree = convert(Tree{TreeNode{T}}, xgtree)

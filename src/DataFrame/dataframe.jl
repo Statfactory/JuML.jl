@@ -1,4 +1,6 @@
 import JSON
+import DataFrames
+import CategoricalArrays
 using Printf
 
 abstract type AbstractDataFrame end
@@ -164,6 +166,31 @@ function DataFrame(path::String; preload::Bool = true)
     DataFrame(len, factors, covariates, AbstractBoolVariate[], dtvariates, intvariates, headerpath)
 end
 
+function DataFrame(df::DataFrames.DataFrame)
+    factors = Vector{AbstractFactor}()
+    covariates = Vector{AbstractCovariate}()
+    dtvariates = Vector{AbstractDateTimeVariate}()
+    intvariates = Vector{AbstractIntVariate}()
+    colnames = DataFrames.names(df)
+    for i = 1:length(colnames)
+        colname = string(colnames[i])
+        col = df[i]
+        if typeof(col) <: Vector{<:AbstractFloat}
+            T = eltype(col)
+            push!(covariates, Covariate{T}(colname, col))
+        elseif typeof(col) <: CategoricalArrays.CategoricalArray
+            levels = [string(level) for level in CategoricalArrays.index(col.pool)]
+            T = eltype(col.refs)
+            push!(factors, Factor{T}(colname, levels, col.refs)) 
+        elseif typeof(col) <: AbstractVector{<:Integer}
+            T = eltype(col)
+            col = convert(Vector{Float32}, collect(col))
+            push!(covariates, Covariate{Float32}(colname, col))
+        end
+    end
+    DataFrame(size(df)[1], factors, covariates, AbstractBoolVariate[], dtvariates, intvariates, "")
+end
+
 function Base.getindex(df::AbstractDataFrame, name::String)
     for factor in df.factors
         if getname(factor) == name
@@ -186,6 +213,10 @@ function Base.getindex(df::AbstractDataFrame, name::String)
             return ivar
         end
     end
+end
+
+function Base.getindex(df::AbstractDataFrame, name::Symbol)
+    df[string(name)]
 end
 
 function Base.summary(factor::AbstractFactor{T}; selector::AbstractBoolVariate = BoolVariate("", BitArray{1}())) where {T<:Unsigned}

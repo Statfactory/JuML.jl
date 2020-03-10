@@ -32,9 +32,9 @@ function logloss(y::AbstractFloat, ŷ::AbstractFloat)
 end
 
 function xgblogit(label::AbstractCovariate{S}, factors::Vector{<:AbstractFactor};
-                  trainselector::AbstractBoolVariate = BoolVariate("", BitArray{1}(0)), 
-                  validselector::AbstractBoolVariate = BoolVariate("", BitArray{1}(0)),
-                  μ::Real = 0.5, posweight::Real = 1.0, subsample::Real = 1.0,
+                  trainselector::AbstractBoolVariate = BoolVariate("", BitArray{1}(undef, 0)), 
+                  validselector::AbstractBoolVariate = BoolVariate("", BitArray{1}(undef, 0)),
+                  μ::Real = 0.5, subsample::Real = 1.0,
                   η::Real = 0.3, λ::Real = 1.0, γ::Real = 0.0, maxdepth::Integer = 6, nrounds::Integer = 2, ordstumps::Bool = false, optsplit::Bool = false, pruning::Bool = false,
                   minchildweight::Real = 1.0, caching::Bool = true, filecaching::Bool = false, slicelength::Integer = 0, usefloat64::Bool = false, leafwise::Bool = false, maxleaves::Integer = 255,
                   singlethread::Bool = false) where {S<:AbstractFloat}
@@ -44,40 +44,45 @@ function xgblogit(label::AbstractCovariate{S}, factors::Vector{<:AbstractFactor}
     factors = caching ? map(cache, factors) : (filecaching ? map(filecache, factors) : factors)
     label = caching ? cache(label) : (filecaching ? filecache(label) : label)
     slicelength = slicelength <= 0 ? length(label) : slicelength
-    trainselector = caching ? (trainselector |> cache) : (filecaching ? filecache(trainselector) : trainselector)
     validselector = caching ? (validselector |> cache) : (filecaching ? filecache(validselector) : validselector)
+    trainselector = length(trainselector) == 0 ? Vector{Bool}() : convert(Vector{Bool}, trainselector)
+    
     λ = T(λ)
     γ = T(γ)
     η = T(η)
-    posweight = T(posweight)
     minchildweight = T(minchildweight)
     μ = T(μ)
     subsample = T(subsample)
     f0 = Vector{T}(undef, length(label))
-    if posweight == one(T)
-        fill!(f0, T(logitraw(μ)))
-    else
-        fill!(f0, T(logitraw(μ, posweight)))
-    end
-    zerocov = ConstCovariate(zero(T), length(trainselector))
-    poswgtcov = iif(TransCovBoolVariate("", label, x -> x == one(S)), ConstCovariate(posweight, length(label)), ConstCovariate(one(S), length(label))) |> cache
+    fill!(f0, T(logitraw(μ)))
+    ∂𝑙 = zeros(T, length(label))
+    ∂²𝑙 = zeros(T, length(label))
+    label = convert(Vector{S}, label)
+
     fm, trees = fold((f0, Vector{XGTree}()), Seq(1:nrounds)) do x, m
         fm, trees = x
-        ŷ = Covariate(sigmoid.(fm)) 
-
-        f = caching ? cache : (filecaching ? filecache : identity)
-
-        ∂𝑙 = length(trainselector) == 0 ? Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙) : iif(trainselector, Trans2Covariate(T, "∂𝑙", label, ŷ, logit∂𝑙), zerocov)
-        ∂²𝑙 = length(trainselector) == 0 ? TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙) : iif(trainselector, TransCovariate(T, "∂²𝑙", ŷ, logit∂²𝑙), zerocov)
-        if posweight != one(T)
-            ∂𝑙 = Trans2Covariate(T, "∂𝑙", ∂𝑙, poswgtcov, *)
-            ∂²𝑙 = Trans2Covariate(T, "∂²𝑙", ∂²𝑙, poswgtcov, *)
+        
+        if length(trainselector) == 0
+            @inbounds for i in 1:length(label)
+                yhat = sigmoid(fm[i])
+                y = label[i]
+                ∂𝑙[i] = logit∂𝑙(y, yhat)
+                ∂²𝑙[i] = logit∂²𝑙(yhat)
+            end
+        else
+            @inbounds for i in 1:length(label)
+                if trainselector[i]
+                    yhat = sigmoid(fm[i])
+                    y = label[i]
+                    ∂𝑙[i] = logit∂𝑙(y, yhat)
+                    ∂²𝑙[i] = logit∂²𝑙(yhat)
+                end
+            end
         end
-
-        tree, predraw = growtree(factors, (∂𝑙 |> f), (∂²𝑙 |> f), maxdepth, λ, γ, leafwise, maxleaves, minchildweight, ordstumps, optsplit, pruning, slicelength, singlethread)
+        
+        tree, predraw = growtree(factors, Covariate(∂𝑙), Covariate(∂²𝑙), maxdepth, λ, γ, leafwise, maxleaves, minchildweight, ordstumps, optsplit, pruning, slicelength, singlethread)
         
         fm .= muladd.(η, predraw, fm)
-        predraw .= sigmoid.(fm)
         push!(trees, tree)
         (fm, trees)
     end
@@ -162,14 +167,14 @@ function predict(model::XGModel{T}, dataframe::AbstractDataFrame; μ::Real = 0.5
         end
     end
 
-    mappedfactors = map(cache, collect(map((x -> x[1]), values(factormap))))
-    for (i, f) in enumerate(keys(factormap))
-        _, levelmap, newind, levelcount = factormap[f]
-        factormap[f] = mappedfactors[i], levelmap, newind, levelcount
-    end
+     mappedfactors = map(cache, collect(map((x -> x[1]), values(factormap))))
+     for (i, f) in enumerate(keys(factormap))
+         _, levelmap, newind, levelcount = factormap[f]
+         factormap[f] = mappedfactors[i], levelmap, newind, levelcount
+     end
 
     mappedtrees = [XGTree{T}(map((layer -> TreeLayer{T}([map(n, dataframe, factormap) for n in layer.nodes])), tree.layers), tree.λ, tree.γ, tree.min∂²𝑙, tree.maxdepth, tree.leafwise, tree.maxleaves, tree.slicelength, tree.singlethread) for tree in trees]
-
+    
     for tree in mappedtrees
         predraw = predict(tree, dataframe)
         f0 .= muladd.(η, predraw, f0)

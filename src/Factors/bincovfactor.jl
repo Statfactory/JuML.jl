@@ -38,8 +38,18 @@ function factor(covariate::AbstractCovariate{S}) where {S<:AbstractFloat}
         end
         acc
     end
-    bins = collect(vset)
-    sort!(bins)
+    uniq = collect(vset)
+    sort!(uniq)
+    m = length(uniq)
+    bins = Vector{S}(undef, m + 1)
+    bins[1] = -Inf32
+    for i in 2:(m + 1)
+        if i == (m + 1)
+            bins[i] = Inf32
+        else
+            bins[i] = uniq[i - 1] + 0.5 * (uniq[i] - uniq[i - 1])
+        end
+    end
     BinCovFactor(getname(covariate), bins, covariate)
 end
 
@@ -73,9 +83,7 @@ function slice(factor::BinCovFactor{T}, fromobs::Integer, toobs::Integer, slicel
     z = bins[length(bins)]
     f = (x -> 
             begin
-                if x == z 
-                    return binlenm1
-                elseif x > z || isnan(x)
+                if isnan(x)
                     return zero(T)
                 else
                     i = searchsortedlast(bins, x)

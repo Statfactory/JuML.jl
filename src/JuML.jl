@@ -26,7 +26,9 @@ export importcsv,
        tryread,
        slice,
        nextslice,
-       map
+       map,
+       XGBClassifier,
+       fit
 
 include("const.jl")
 include("DataStructures/seq.jl")
@@ -88,5 +90,7 @@ include("DateTimeVariates/trans2datetimevariate.jl")
 include("XGBoost/tree.jl")
 include("XGBoost/split.jl")
 include("XGBoost/logistic.jl")
+
+include("MLJ/MLJ_XGBoost.jl")
 
 end

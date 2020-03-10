@@ -1,4 +1,4 @@
-struct IntVariate{T<:Signed} <: AbstractIntVariate{T}
+struct IntVariate{T<:Integer} <: AbstractIntVariate{T}
     name::String
     data::Vector{T}
 end
